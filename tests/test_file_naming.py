@@ -135,8 +135,71 @@ class TestFileNaming(unittest.TestCase):
             file=MockFile(ext=".jpg")
         )
         name = get_media_filename(msg, prefix_date=True)
-        self.assertEqual(name, "2026-08-15_Photo_108.jpg")
+    def test_channel_handle_prefixing(self):
+        class MockChannel:
+            def __init__(self, username=None, title=None):
+                self.username = username
+                self.title = title
+
+        channel = MockChannel(username="cool_channel", title="Cool Channel Title")
+        msg = MockMessage(
+            id=201,
+            date=datetime(2026, 4, 1),
+            photo=True,
+            file=MockFile(ext=".jpg")
+        )
+        # Both channel prefix and date
+        name = get_media_filename(msg, prefix_date=True, channel=channel, prefix_channel=True)
+        self.assertEqual(name, "@cool_channel_2026-04-01_Photo_201.jpg")
+
+        # Channel prefix without date
+        name_no_date = get_media_filename(msg, prefix_date=False, channel=channel, prefix_channel=True)
+        self.assertEqual(name_no_date, "@cool_channel_Photo_201.jpg")
+
+        # Fallback to title when username is missing
+        chan_no_user = MockChannel(username=None, title="My Studio")
+        name_title = get_media_filename(msg, prefix_date=True, channel=chan_no_user, prefix_channel=True)
+        self.assertEqual(name_title, "My Studio_2026-04-01_Photo_201.jpg")
+
+    def test_star_paid_media_naming(self):
+        from telethon.tl.types import (
+            MessageMediaPaidMedia,
+            MessageExtendedMedia,
+            MessageExtendedMediaPreview,
+            MessageMediaPhoto,
+            MessageMediaDocument,
+            Photo,
+            Document
+        )
+
+        # 1. Unlocked single photo Star media
+        mock_p = Photo(id=1, access_hash=1, file_reference=b'', date=None, sizes=[], dc_id=1)
+        ext_photo = MessageExtendedMedia(media=MessageMediaPhoto(photo=mock_p))
+        paid_media = MessageMediaPaidMedia(stars_amount=15, extended_media=[ext_photo])
+
+        msg = MockMessage(id=301, date=datetime(2026, 6, 1))
+        msg.media = paid_media
+
+        name = get_media_filename(msg, prefix_date=True)
+        self.assertEqual(name, "2026-06-01_Photo_301.jpg")
+
+        # 2. Multi-item paid media album
+        name_sub1 = get_media_filename(msg, prefix_date=True, target_media=ext_photo.media, sub_index=1)
+        name_sub2 = get_media_filename(msg, prefix_date=True, target_media=ext_photo.media, sub_index=2)
+        self.assertEqual(name_sub1, "2026-06-01_Photo_301_1.jpg")
+        self.assertEqual(name_sub2, "2026-06-01_Photo_301_2.jpg")
+
+        # 3. Unlocked video document Star media
+        mock_d = Document(id=2, access_hash=2, file_reference=b'', date=None, mime_type="video/mp4", size=5000, dc_id=1, attributes=[])
+        ext_video = MessageExtendedMedia(media=MessageMediaDocument(document=mock_d))
+        paid_video = MessageMediaPaidMedia(stars_amount=25, extended_media=[ext_video])
+        msg_video = MockMessage(id=302, date=datetime(2026, 6, 2))
+        msg_video.media = paid_video
+
+        name_vid = get_media_filename(msg_video, prefix_date=True)
+        self.assertEqual(name_vid, "2026-06-02_Video_302.mp4")
 
 
 if __name__ == "__main__":
     unittest.main()
+

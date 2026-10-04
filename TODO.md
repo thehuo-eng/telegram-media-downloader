@@ -42,7 +42,11 @@ This document tracks the vision and high-level goals for the major **v3.0.0** re
 
 ## ✅ Roadmap
 
-- **Current Version**: 2.8.3
+- **Current Version**: 2.8.4
+- **Completed in v2.8.4**:
+  - [x] **Telegram Stars Paid Media**: Detect, unpack, and download purchased Star photos, videos, and multi-media albums (`MessageMediaPaidMedia`).
+  - [x] **Channel Handle Filename Prefixing**: Prepend `@{username}_` or `channel_title_` to downloaded media filenames via GUI setting toggle.
+  - [x] **Paid Media Category & Cache Integration**: Integrated paid media scanning into Media and All views with accurate file size metadata.
 - **Completed in v2.8.3**:
   - [x] **Premature Queue Completion Fix**: Scoped initial completion counters strictly to the current task's messages.
   - [x] **Channel Isolation**: Isolated channel download states to prevent cross-channel ID collisions.

@@ -7,6 +7,7 @@
     "rename_duplicates": true,
     "use_message_date": true,
     "prefix_file_date": true,
+    "prefix_channel_handle": false,
     "redownload_deleted": false,
     "dark_mode": true,
     "proxy": {

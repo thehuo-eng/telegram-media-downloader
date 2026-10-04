@@ -14,7 +14,10 @@ from telethon.tl.types import (
     InputMessagesFilterVoice,
     InputMessagesFilterRoundVideo,
     MessageMediaPhoto,
-    MessageMediaDocument
+    MessageMediaDocument,
+    MessageMediaPaidMedia,
+    MessageExtendedMedia,
+    MessageExtendedMediaPreview
 )
 from database import save_task_db, load_active_tasks_db, remove_task_db, cache_media_list, mark_media_completed, get_completed_state_db
 from utils.file_utils import get_media_filename
@@ -235,6 +238,159 @@ async def download_single_file(client, channel, message, folder_name, progress_c
     max_retries = 3
     for attempt in range(max_retries):
         try:
+            # Speed tracking variables & cancellation signal
+            start_time = [time.time()]
+            last_bytes = [0]
+            is_first_cb = [True]
+            smoothed_speed = [0.0]
+            
+            class PauseRequested(Exception): pass
+            
+            async def internal_progress(current, total):
+                if cancel_event and cancel_event.is_set():
+                    raise PauseRequested()
+                
+                tot = total or getattr(message, 'size', 0) or 0
+                if is_first_cb[0]:
+                    is_first_cb[0] = False
+                    last_bytes[0] = current
+                    start_time[0] = time.time()
+                    if progress_cb:
+                        initial_status = "Resuming..." if current > 0 else "Starting..."
+                        progress_cb(message.id, current, tot, speed_str=initial_status)
+                    return
+
+                now = time.time()
+                elapsed = now - start_time[0]
+                if elapsed >= 0.2:
+                    bytes_diff = current - last_bytes[0]
+                    instant_speed_kb_s = (bytes_diff / elapsed) / 1024 if elapsed > 0 else 0.0
+                    
+                    if max_speed_kb and instant_speed_kb_s > max_speed_kb:
+                        expected_time = (bytes_diff / 1024) / max_speed_kb
+                        sleep_time = expected_time - elapsed
+                        if sleep_time > 0:
+                            await asyncio.sleep(sleep_time)
+                            now = time.time()
+                            elapsed = now - start_time[0]
+                            instant_speed_kb_s = (bytes_diff / elapsed) / 1024 if elapsed > 0 else 0.0
+
+                    # Exponential Moving Average for silky smooth speed output
+                    if smoothed_speed[0] <= 0.0:
+                        smoothed_speed[0] = instant_speed_kb_s
+                    else:
+                        smoothed_speed[0] = 0.7 * smoothed_speed[0] + 0.3 * instant_speed_kb_s
+
+                    speed_val = smoothed_speed[0]
+                    speed_str = f"{(speed_val/1024):.1f} MB/s" if speed_val > 1024 else f"{int(speed_val)} KB/s"
+                    start_time[0] = now
+                    last_bytes[0] = current
+                    if progress_cb:
+                        progress_cb(message.id, current, tot, speed_str=speed_str)
+
+            # 🌟 Special handling for Telegram Stars Paid Media (MessageMediaPaidMedia)
+            msg_media = getattr(message, 'media', None)
+            if isinstance(msg_media, MessageMediaPaidMedia):
+                ext_list = getattr(msg_media, 'extended_media', [])
+                unlocked_items = [item for item in ext_list if isinstance(item, MessageExtendedMedia)]
+                if not unlocked_items:
+                    stars = getattr(msg_media, 'stars_amount', 0)
+                    print(f"Skipping message {message.id}: Star Paid Media ({stars} Stars) is not purchased on this account.")
+                    if progress_cb:
+                        progress_cb(message.id, 0, 0, speed_str=f"Skipped ({stars}⭐ Unpaid)")
+                    if complete_cb:
+                        complete_cb(message.id, filepath=None)
+                    return
+
+                # Download unlocked items in paid media album
+                last_filepath = None
+                total_unlocked = len(unlocked_items)
+                from telethon.utils import get_peer_id
+                from database import get_media_downloaded_path, update_media_downloaded_path
+                c_id = str(get_peer_id(channel)).replace("-100", "", 1)
+
+                for sub_idx, ext_item in enumerate(unlocked_items, start=1):
+                    if cancel_event and cancel_event.is_set():
+                        if complete_cb: complete_cb(message.id, paused=True, filepath=None)
+                        return
+
+                    actual_media = ext_item.media
+                    sub_size = 0
+                    if getattr(actual_media, 'document', None):
+                        sub_size = getattr(actual_media.document, 'size', 0)
+                    elif getattr(actual_media, 'photo', None) and getattr(actual_media.photo, 'sizes', None):
+                        for s in reversed(actual_media.photo.sizes):
+                            if hasattr(s, 'size'):
+                                sub_size = s.size
+                                break
+
+                    sub_num = sub_idx if total_unlocked > 1 else None
+                    item_fname = get_media_filename(
+                        message,
+                        prefix_date=prefix_file_date,
+                        channel=channel,
+                        target_media=actual_media,
+                        sub_index=sub_num
+                    )
+
+                    item_path = os.path.join(folder_name, item_fname)
+                    if rename_duplicates:
+                        item_path = get_unique_filepath(folder_name, item_fname, reserved_paths=reserved_paths)
+                    elif reserved_paths is not None:
+                        reserved_paths.add(item_path)
+
+                    if os.path.exists(item_path) and sub_size and os.path.getsize(item_path) >= sub_size:
+                        last_filepath = item_path
+                        continue
+
+                    # Download with progress
+                    downloaded_file = None
+                    if sub_size > 1024 * 1024:
+                        try:
+                            ok = await fast_download_file(
+                                client=client,
+                                location=actual_media,
+                                target_path=item_path,
+                                file_size=sub_size,
+                                progress_callback=internal_progress,
+                                cancel_event=cancel_event,
+                                workers=4
+                            )
+                            if ok and os.path.exists(item_path):
+                                downloaded_file = item_path
+                        except PauseRequested:
+                            if complete_cb: complete_cb(message.id, paused=True, filepath=None)
+                            return
+                        except Exception as fast_err:
+                            print(f"Fast download fallback for Star media {message.id}: {fast_err}")
+
+                    if not downloaded_file:
+                        try:
+                            downloaded_file = await client.download_media(
+                                actual_media,
+                                file=item_path,
+                                progress_callback=internal_progress
+                            )
+                        except PauseRequested:
+                            if complete_cb: complete_cb(message.id, paused=True, filepath=None)
+                            return
+
+                    if downloaded_file and os.path.exists(downloaded_file):
+                        last_filepath = downloaded_file
+                        if use_message_date and getattr(message, 'date', None):
+                            try:
+                                mtime = message.date.timestamp()
+                                os.utime(downloaded_file, (mtime, mtime))
+                            except Exception: pass
+
+                if last_filepath:
+                    try:
+                        update_media_downloaded_path(c_id, message.id, os.path.basename(last_filepath))
+                    except Exception: pass
+                    if complete_cb:
+                        complete_cb(message.id, filepath=last_filepath)
+                    return
+
             file_size = (
                 message.video.size if getattr(message, 'video', None)
                 else message.document.size if getattr(message, 'document', None) 
@@ -243,7 +399,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
             )
             
             # Deduplication Check
-            file_name = get_media_filename(message, prefix_date=prefix_file_date)
+            file_name = get_media_filename(message, prefix_date=prefix_file_date, channel=channel)
             
             expected_filepath = None
             if file_name:
@@ -320,55 +476,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
                             complete_cb(message.id, filepath=expected_filepath)
                         return
 
-            # Speed tracking variables
-            start_time = [time.time()]
-            last_bytes = [0]
-            is_first_cb = [True]
-            smoothed_speed = [0.0]
-            
-            class PauseRequested(Exception): pass
-            
-            async def internal_progress(current, total):
-                if cancel_event and cancel_event.is_set():
-                    raise PauseRequested()
-                
-                tot = total or file_size or 0
-                if is_first_cb[0]:
-                    is_first_cb[0] = False
-                    last_bytes[0] = current
-                    start_time[0] = time.time()
-                    if progress_cb:
-                        initial_status = "Resuming..." if current > 0 else "Starting..."
-                        progress_cb(message.id, current, tot, speed_str=initial_status)
-                    return
 
-                now = time.time()
-                elapsed = now - start_time[0]
-                if elapsed >= 0.2:
-                    bytes_diff = current - last_bytes[0]
-                    instant_speed_kb_s = (bytes_diff / elapsed) / 1024 if elapsed > 0 else 0.0
-                    
-                    if max_speed_kb and instant_speed_kb_s > max_speed_kb:
-                        expected_time = (bytes_diff / 1024) / max_speed_kb
-                        sleep_time = expected_time - elapsed
-                        if sleep_time > 0:
-                            await asyncio.sleep(sleep_time)
-                            now = time.time()
-                            elapsed = now - start_time[0]
-                            instant_speed_kb_s = (bytes_diff / elapsed) / 1024 if elapsed > 0 else 0.0
-
-                    # Exponential Moving Average for silky smooth speed output
-                    if smoothed_speed[0] <= 0.0:
-                        smoothed_speed[0] = instant_speed_kb_s
-                    else:
-                        smoothed_speed[0] = 0.7 * smoothed_speed[0] + 0.3 * instant_speed_kb_s
-
-                    speed_val = smoothed_speed[0]
-                    speed_str = f"{(speed_val/1024):.1f} MB/s" if speed_val > 1024 else f"{int(speed_val)} KB/s"
-                    start_time[0] = now
-                    last_bytes[0] = current
-                    if progress_cb:
-                        progress_cb(message.id, current, tot, speed_str=speed_str)
 
             dir_path = os.path.join(folder_name, "")
             target_path = expected_filepath if file_name else dir_path
@@ -660,12 +768,14 @@ async def fetch_categorized_media(client, channel, limit=None, topic_id=None):
             # We can try to fetch the service message that created the topic or just use one message.
             pass
 
+        paid_media = [m for m in all_msgs if isinstance(getattr(m, 'media', None), MessageMediaPaidMedia)]
+
         # 🗄️ CACHE RESULTS IN SQLite for faster tab switching
         from telethon.utils import get_peer_id
         try:
             ch_id = get_peer_id(channel)
             m_dict = {
-                "Media": sorted(list(photos) + list(videos) + list(round_vids), key=lambda m: m.id, reverse=True),
+                "Media": sorted(list(photos) + list(videos) + list(round_vids) + list(paid_media), key=lambda m: m.id, reverse=True),
                 "Files": list(docs),
                 "ZIPs": [m for m in docs if m.document and m.document.mime_type in ["application/zip", "application/x-rar-compressed", "application/x-7z-compressed"]],
                 "Music": list(music),
@@ -690,14 +800,14 @@ async def fetch_categorized_media(client, channel, limit=None, topic_id=None):
 
     # Aggregate into "All" - Using a dict to deduplicate by message ID
     all_dict = {}
-    all_raw = list(photos) + list(videos) + list(round_vids) + list(docs) + list(music) + list(voice) + list(links) + list(gifs) + list(chats)
+    all_raw = list(photos) + list(videos) + list(round_vids) + list(docs) + list(music) + list(voice) + list(links) + list(gifs) + list(chats) + list(paid_media)
     for m in all_raw:
         all_dict[m.id] = m
     all_sorted = sorted(all_dict.values(), key=lambda x: x.id, reverse=True)
 
     return {
         "All":   all_sorted[:limit], # Limit the "All" tab to the most recent items
-        "Media": sorted(list(photos) + list(videos) + list(round_vids), key=lambda m: m.id, reverse=True)[:limit],
+        "Media": sorted(list(photos) + list(videos) + list(round_vids) + list(paid_media), key=lambda m: m.id, reverse=True)[:limit],
         "Files": list(docs),
         "ZIPs":  list(zips),
         "Music": list(music),

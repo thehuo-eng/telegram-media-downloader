@@ -576,7 +576,7 @@ class TelegramWorker(QThread):
                 actual_downloaded_state = set()
                 c_id = str(resolved_chan_id).replace("-100", "", 1)
                 for msg in messages:
-                    fname = get_media_filename(msg, prefix_date=prefix_file_date)
+                    fname = get_media_filename(msg, prefix_date=prefix_file_date, channel=channel)
                     target_f = msg_folder_resolver(msg) if msg_folder_resolver else folder_name
                     fpath = os.path.join(target_f, fname) if fname else None
                     if fpath and not os.path.exists(fpath):
@@ -637,10 +637,21 @@ class TelegramWorker(QThread):
             files_metadata = []
             prefix_file_date = cfg.get("prefix_file_date", True)
             for msg in messages:
-                fname = get_media_filename(msg, prefix_date=prefix_file_date)
+                fname = get_media_filename(msg, prefix_date=prefix_file_date, channel=channel)
                 fsize = 0
                 try:
-                    if getattr(msg, 'document', None):
+                    if getattr(msg, 'media', None) and msg.media.__class__.__name__ == 'MessageMediaPaidMedia':
+                        for item in getattr(msg.media, 'extended_media', []):
+                            if hasattr(item, 'media'):
+                                sub_m = item.media
+                                if getattr(sub_m, 'document', None):
+                                    fsize += getattr(sub_m.document, 'size', 0)
+                                elif getattr(sub_m, 'photo', None) and getattr(sub_m.photo, 'sizes', None):
+                                    for s in reversed(sub_m.photo.sizes):
+                                        if hasattr(s, 'size'):
+                                            fsize += s.size
+                                            break
+                    elif getattr(msg, 'document', None):
                         fsize = getattr(msg.document, 'size', 0)
                     elif getattr(msg, 'photo', None):
                         if hasattr(msg.photo, 'sizes') and msg.photo.sizes:

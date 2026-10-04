@@ -168,7 +168,15 @@ def cache_media_list(channel_id, messages_dict):
             # We don't save raw telethon objects, just the essentials
             m_title = get_media_filename(m, prefix_date=prefix_date)
             m_size = 0
-            if hasattr(m, 'file') and m.file:
+            if hasattr(m, 'media') and m.media and m.media.__class__.__name__ == 'MessageMediaPaidMedia':
+                for item in getattr(m.media, 'extended_media', []):
+                    if hasattr(item, 'media'):
+                        sub_m = item.media
+                        if hasattr(sub_m, 'document') and sub_m.document:
+                            m_size += getattr(sub_m.document, 'size', 0)
+                        elif hasattr(sub_m, 'photo') and sub_m.photo and hasattr(sub_m.photo, 'sizes') and sub_m.photo.sizes:
+                            m_size += sub_m.photo.sizes[-1].size if hasattr(sub_m.photo.sizes[-1], 'size') else 0
+            elif hasattr(m, 'file') and m.file:
                 m_size = getattr(m.file, 'size', 0)
             elif hasattr(m, 'document') and m.document:
                 m_size = getattr(m.document, 'size', 0)

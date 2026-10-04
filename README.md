@@ -47,6 +47,8 @@ All downloaded media (images, videos, documents, audio) can now be automatically
 - 📥 **Empty State Screens** — friendly placeholders on Home and Downloads before any tasks are added
 - 📂 **Media Browser** — category-based file browser (Media, Files, Music, Links, GIFs)
 - ⚡ **Parallel Fetch** — all categories load simultaneously via `asyncio.gather` (~5x faster)
+- 🌟 **Telegram Stars Paid Media** — automatically downloads purchased Star posts (photos, videos, and multi-item albums)
+- 🏷️ **Channel Handle Prefixing** — optional `@username_` or channel title filename prefixing for organized external styling
 - 🔁 **Smart Deduplication** — skips already-downloaded files by name and size with physical disk checks
 - 📅 **Publication Date Naming** — automatically prefix files with `YYYY-MM-DD` and cleanly name untitled videos/photos
 - ⏸ **Concurrent Downloads** — configurable parallel streams with pause / resume support
@@ -149,6 +151,12 @@ Go to **Settings → Download Limit** to adjust how many files download simultan
 ---
 
 ## Changelog
+
+### v2.8.4
+- 🌟 **Telegram Stars Paid Media Support**: Added automated detection, extraction, and downloading for Telegram Stars paid media (`MessageMediaPaidMedia`). Accurately fetches unlocked full-quality photos and videos (including multi-item albums) for posts purchased by the user's account, while gracefully skipping unpaid posts with clear status reporting (`Skipped (X⭐ Unpaid)`).
+- 🏷️ **Channel Handle / Name Filename Prefixing**: Added a setting to automatically prepend channel handles or names (`@channel_` or `ChannelTitle_`) to downloaded filenames alongside date prefixes (e.g. `@channel_2026-10-04_Photo_101.jpg`), matching file organization styles from other downloaders.
+- ⚙️ **GUI Setting Toggle**: Added "Prefix Filenames with Channel Handle / Name (@channel)" toggle in Settings → Download Settings.
+- 🗄️ **Media Feeds & Caching Integration**: Included Star paid media in Media and All feed views, and added accurate size calculation for metadata display and database caching.
 
 ### v2.8.3
 - 🎯 **Fixed Premature Queue Completion**: Fixed queue download cards immediately showing as "Completed ✓" when downloading multiple channels or batches. Scoped task initial completion counters strictly to the current task's message set instead of counting all historical channel downloads.
