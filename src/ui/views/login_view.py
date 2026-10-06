@@ -10,6 +10,7 @@ class LoginView(QWidget):
     login_started = Signal(str, str, str)   # api_id, api_hash, phone
     code_submitted = Signal(str)            # code
     password_submitted = Signal(str)        # password
+    proxy_configured = Signal()             # emitted when proxy is updated via dialog
 
     def __init__(self):
         super().__init__()
@@ -28,7 +29,7 @@ class LoginView(QWidget):
         self.card = QFrame()
         self.card.setObjectName("WhiteCard")
         self.card.setFixedWidth(420)
-        self.card.setMaximumHeight(520)
+        self.card.setMaximumHeight(580)
         self.card.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
         
         card_layout = QVBoxLayout(self.card)
@@ -97,6 +98,14 @@ class LoginView(QWidget):
         l1.addWidget(self.inp_phone)
         l1.addSpacing(12)
         l1.addWidget(self.btn_send_code)
+        l1.addSpacing(6)
+
+        self.btn_proxy = QPushButton("🌐 Network & Proxy Settings")
+        self.btn_proxy.setObjectName("SecondaryButton")
+        self.btn_proxy.setMinimumHeight(38)
+        self.btn_proxy.setCursor(Qt.PointingHandCursor)
+        self.btn_proxy.clicked.connect(self.open_proxy_settings)
+        l1.addWidget(self.btn_proxy)
 
         # Step 2 – OTP
         page2 = QWidget()
@@ -251,3 +260,9 @@ class LoginView(QWidget):
         self.btn_send_code.setEnabled(True)
         self.btn_send_code.setText("Send Verification Code")
         self.stack.setCurrentIndex(0)
+
+    def open_proxy_settings(self):
+        from ui.components.proxy_dialog import ProxySettingsDialog
+        dlg = ProxySettingsDialog(self)
+        dlg.proxy_saved.connect(self.proxy_configured.emit)
+        dlg.exec()

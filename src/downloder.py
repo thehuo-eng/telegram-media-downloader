@@ -80,7 +80,9 @@ async def download_in_batches(messages, folder_name, batch_size):
 
 
 async def main():
-    async with TelegramClient(session_name, api_id, api_hash) as client:
+    from ui.views.settings_view import get_telegram_proxy
+    proxy = get_telegram_proxy()
+    async with TelegramClient(session_name, api_id, api_hash, proxy=proxy) as client:
         print(f"{Fore.GREEN}Connected successfully!{Style.RESET_ALL}")
         channel_username = input(
             f"{Fore.CYAN}Enter the channel name or username: {Style.RESET_ALL}"

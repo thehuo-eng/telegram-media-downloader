@@ -63,16 +63,35 @@ init_db()
 
 # --- TASK MANAGEMENT ---
 
+def normalize_channel_key(chan_str):
+    if not chan_str:
+        return ""
+    s = str(chan_str).strip()
+    if "t.me/" in s:
+        s = s.rstrip('/').split('/')[-1]
+    if s.startswith("@"):
+        s = s[1:]
+    if s.startswith("-100"):
+        s = s[4:]
+    elif s.startswith("-"):
+        s = s[1:]
+    return s
+
 def save_task_db(task):
     """Saves or updates a single task object in SQLite."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # 🛡️ Deduplication normalized key
+    # Deduplication normalized key
     ch = str(task.get("channel_input", "")).strip()
-    ch_key = ch.replace("-100", "", 1) if ch.startswith("-100") else ch
+    ch_key = normalize_channel_key(ch)
     media_id = task.get("media_id", 6)
-    task_id = f"{ch_key}_{media_id}"
+    topic_id = task.get("topic_id")
+    
+    # Use existing task_id if provided and clean, otherwise compute canonical ID
+    task_id = task.get("task_id")
+    if not task_id or "t.me/" in task_id or " " in task_id:
+        task_id = f"{ch_key}_{topic_id}_{media_id}" if topic_id else f"{ch_key}_{media_id}"
     
     selected_json = json.dumps(task.get("selected_message_ids", []))
     
@@ -98,6 +117,23 @@ def save_task_db(task):
         task.get("total_items"), task.get("folder_name")
     ))
     
+    conn.commit()
+    conn.close()
+
+def update_task_paused_db(task_id_or_chan, is_paused=True):
+    """Directly updates the paused status of any matching task in SQLite."""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    paused_val = 1 if is_paused else 0
+    clean = normalize_channel_key(task_id_or_chan)
+    cursor.execute("""
+        UPDATE tasks SET paused=? 
+        WHERE task_id=? 
+           OR task_id LIKE ? 
+           OR channel_input=? 
+           OR channel_input LIKE ?
+           OR title=?
+    """, (paused_val, str(task_id_or_chan), f"%{clean}%", str(task_id_or_chan), f"%{clean}%", str(task_id_or_chan)))
     conn.commit()
     conn.close()
 

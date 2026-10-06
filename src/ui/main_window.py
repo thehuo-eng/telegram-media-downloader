@@ -67,26 +67,46 @@ class MainWindow(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle("About TG Media Downloader")
         
-        # Premium/Rich look with HTML
+        # Determine theme-aware text color
+        is_dark = True
+        try:
+            from ui.views.settings_view import load_config
+            cfg = load_config()
+            if cfg.get("dark_mode") is not None:
+                is_dark = bool(cfg.get("dark_mode"))
+        except Exception:
+            pass
+
+        body_color = "#E2E8F0" if is_dark else "#334155"
+        item_color = "#94A3B8" if is_dark else "#64748B"
+        border_color = "#334155" if is_dark else "#E2E8F0"
+
         text = f"""
-        <h2 style='color: #2196F3;'>TG Media Downloader</h2>
-        <p><b>Version:</b> v{self.version}</p>
-        <p>A modern, high-performance Telegram media downloader built with PySide6 and Telethon.</p>
-        <ul style='color: #555; padding-left: 20px;'>
-            <li>✨ <b>Instant Loading:</b> Zero-wait cached media browsing.</li>
-            <li>⚡ <b>Byte-Range Resuming:</b> Flawless pause & resume via explicit offsets.</li>
-            <li>🗄️ <b>SQLite Persistence:</b> Robust, crash-proof active queues.</li>
-            <li>🍎 <b>Native macOS:</b> Separate installers for Apple Silicon and Intel Macs.</li>
-        </ul>
-        <hr/>
-        <p>Enjoying the app? Consider supporting development by starring our repository or sponsoring!</p>
-        <p>
-            <a href='https://github.com/vinodkr494/telegram-media-downloader' style='color: #FFC107; font-weight: bold; font-size: 14px;'>⭐ Star on GitHub</a>
-            &nbsp;&nbsp;|&nbsp;&nbsp;
-            <a href='https://github.com/sponsors/vinodkr494' style='color: #EF4444; font-weight: bold; font-size: 14px;'>❤️ Sponsor & Donate</a>
-        </p>
-        <br/>
-        <p style='font-size: 10px; color: #888;'>&copy; 2026 Vinodkr494. Licensed under MIT.</p>
+        <div style='font-family: Segoe UI, -apple-system, sans-serif;'>
+            <h2 style='color: #2BA5E4; margin-bottom: 2px;'>Telegram Media Downloader</h2>
+            <p style='color: {body_color}; margin-top: 0px;'><b>Version:</b> v{self.version}</p>
+            <p style='color: {body_color};'>A high-performance, modern Telegram media bulk-downloader built with PySide6 and Telethon.</p>
+            
+            <h4 style='color: #2BA5E4; margin-bottom: 4px;'>Key Highlights:</h4>
+            <ul style='color: {item_color}; padding-left: 20px; line-height: 1.5;'>
+                <li>🌐 <b>Full Proxy Support:</b> SOCKS5, SOCKS4, and HTTP with pre-login setup.</li>
+                <li>⚡ <b>FastTelethon Turbo:</b> Parallel chunk streaming up to 20x faster.</li>
+                <li>🌟 <b>Telegram Stars:</b> Direct download for purchased Star paid media.</li>
+                <li>🗄️ <b>SQLite Persistence:</b> Robust pause, resume, and queue retention.</li>
+                <li>📁 <b>File Manager:</b> Search, filter, inspect, and organize downloaded media.</li>
+                <li>📅 <b>Date & Handle Prefixing:</b> Chronological naming with <code>@channel_</code> tags.</li>
+            </ul>
+            
+            <hr style='border: none; border-top: 1px solid {border_color}; margin: 12px 0;'/>
+            
+            <p style='color: {body_color};'>Enjoying the app? Consider starring the project or sponsoring development!</p>
+            <p>
+                <a href='https://github.com/vinodkr494/telegram-media-downloader' style='color: #F59E0B; font-weight: bold; font-size: 13px; text-decoration: none;'>⭐ Star on GitHub</a>
+                &nbsp;&nbsp;&bull;&nbsp;&nbsp;
+                <a href='https://github.com/sponsors/vinodkr494' style='color: #EF4444; font-weight: bold; font-size: 13px; text-decoration: none;'>❤️ Sponsor & Donate</a>
+            </p>
+            <p style='font-size: 10px; color: {item_color}; margin-top: 14px;'>&copy; 2026 Vinod Kumar. Licensed under the MIT License.</p>
+        </div>
         """
         msg.setText(text)
         msg.setStandardButtons(QMessageBox.Ok)
@@ -279,6 +299,7 @@ class MainWindow(QMainWindow):
         self.page_login.login_started.connect(self.worker.start_login)
         self.page_login.code_submitted.connect(self.worker.submit_code)
         self.page_login.password_submitted.connect(self.worker.submit_password)
+        self.page_login.proxy_configured.connect(self.on_proxy_configured)
         
         # Connect Queue Global Buttons
         self.page_queue.btn_pause_all.clicked.connect(self.pause_all_downloads)
@@ -437,6 +458,7 @@ class MainWindow(QMainWindow):
         self.worker.signals.error_occurred.connect(self.on_fetch_error)
         
         self.page_settings.logoutRequested.connect(self.logout)
+        self.page_settings.settingsSaved.connect(self.on_settings_saved)
         # sidebar signals are now handled by button connects
 
     def on_download_completed(self, task_id, folder_name):
@@ -471,7 +493,15 @@ class MainWindow(QMainWindow):
         
     def show_auth_error(self, err_msg):
         auth_dialogs.show_auth_error(self, err_msg)
-        self.page_login.reset_to_start()
+        self.prompt_login()
+
+    def on_settings_saved(self):
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.reload_client()
+
+    def on_proxy_configured(self):
+        if hasattr(self, 'worker') and self.worker:
+            self.worker.reload_client()
             
     def on_auth_success(self):
         if self._is_authenticating:
@@ -490,28 +520,54 @@ class MainWindow(QMainWindow):
         
         try:
             from core_downloader import load_active_tasks, save_active_tasks
+            from database import normalize_channel_key
             tasks = load_active_tasks()
             if not isinstance(tasks, list):
-                print(f"Warning: active_tasks.json is not a list. Type: {type(tasks)}")
+                print(f"Warning: active_tasks is not a list. Type: {type(tasks)}")
                 tasks = []
                 
-            # Initial deduplication
-            seen = set()
-            deduped = []
+            # Smart deduplication: consolidate duplicate entries for the same channel & media
+            merged_tasks = []
             for t in tasks:
                 if not isinstance(t, dict): continue
-                chan = str(t.get("channel_input", "")).strip()
-                chan_key = chan.rstrip('/').split('/')[-1].replace("-100", "", 1)
-                topic = t.get("topic_id")
+                chan_raw = str(t.get("channel_input", "")).strip()
+                chan_norm = normalize_channel_key(chan_raw)
+                title = str(t.get("title", "")).strip()
                 media = t.get("media_id", 6)
-                key = (chan_key, topic, media)
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(t)
+                topic = t.get("topic_id")
+                
+                matched = None
+                for existing in merged_tasks:
+                    ex_chan_norm = normalize_channel_key(existing.get("channel_input"))
+                    ex_title = str(existing.get("title", "")).strip()
+                    ex_media = existing.get("media_id", 6)
+                    ex_topic = existing.get("topic_id")
+                    
+                    if ex_media == media and ex_topic == topic:
+                        if (chan_norm and ex_chan_norm and chan_norm == ex_chan_norm) or \
+                           (title and ex_title and title == ex_title) or \
+                           (title and ex_chan_norm and title == ex_chan_norm) or \
+                           (chan_norm and ex_title and chan_norm == ex_title):
+                            matched = existing
+                            break
+                            
+                if matched:
+                    # CRITICAL: If either duplicate was paused, the merged task MUST stay paused!
+                    if bool(t.get("paused")):
+                        matched["paused"] = True
+                    # Prefer resolved numeric ID (-100...)
+                    if str(t.get("channel_input", "")).startswith("-100"):
+                        matched["channel_input"] = t.get("channel_input")
+                    if t.get("title") and not matched.get("title"):
+                        matched["title"] = t.get("title")
+                    if t.get("total_items", 0) > matched.get("total_items", 0):
+                        matched["total_items"] = t.get("total_items")
+                else:
+                    merged_tasks.append(t)
             
-            if len(deduped) != len(tasks):
-                save_active_tasks(deduped)
-                tasks = deduped
+            if len(merged_tasks) != len(tasks):
+                save_active_tasks(merged_tasks)
+            tasks = merged_tasks
             
             from ui.views.settings_view import load_config
             cfg = load_config()

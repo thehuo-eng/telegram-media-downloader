@@ -31,6 +31,9 @@ Built-in physical disk presence verification. If you delete any files or folders
 ### 📅 Publication Date Media Naming
 All downloaded media (images, videos, documents, audio) can now be automatically prefixed with their publication date (e.g. `2026-01-01_filename.mp4` or `2026-01-01_Photo_123.jpg`), replacing random numeric document IDs for videos and keeping download folders organized chronologically.
 
+### 🌐 End-to-End Proxy Routing & Pre-Login Setup
+Native SOCKS5, SOCKS4, and HTTP proxy support routed directly through Telethon via `python-socks[asyncio]`. Users on restricted networks (such as China or Iran) can configure their proxy directly from the login card before requesting OTP codes, ensuring complete privacy and reliable connectivity across all download threads.
+
 ---
 
 ## Features
@@ -54,7 +57,7 @@ All downloaded media (images, videos, documents, audio) can now be automatically
 - ⏸ **Concurrent Downloads** — configurable parallel streams with pause / resume support
 - 📊 **Per-file Progress Bars** — live speed display (KB/s / MB/s) with EMA smoothing
 - **Speed Limiter** — configurable max download speed in Settings
-- **Proxy Support** — SOCKS4, SOCKS5, HTTP, and MTProto configuration
+- **Proxy Support** — SOCKS5, SOCKS4, and HTTP proxy configuration
 - **Theme Toggle** — Light and Dark mode with persistent session saving
 - **Persistent Queue** — saves and restores on restart automatically with SQLite
 - **Cross-Platform** — standalone executables for Windows, Linux, and macOS
@@ -151,6 +154,12 @@ Go to **Settings → Download Limit** to adjust how many files download simultan
 ---
 
 ## Changelog
+
+### v2.8.5
+- 🌐 **End-to-End Proxy Support**: Plumbed proxy routing directly into all `TelegramClient` connection instances using `python-socks[asyncio]`. Fully supports SOCKS5, SOCKS4, and HTTP proxies across all authentication calls, dialog fetches, and multi-part media downloads.
+- 🚪 **Pre-Login Proxy Configuration**: Added a "🌐 Network & Proxy Settings" modal dialog directly on the login card, enabling users on blocked networks to configure and save their proxy before authenticating or requesting OTP codes.
+- 🌓 **Settings & Dark Mode Retention**: Fixed an issue where saving settings inadvertently deleted the `dark_mode` preference or custom keys; settings are now merged into `load_config()`.
+- 🛡️ **Atomic Configuration Saving**: Migrated configuration file writes to an atomic temp-file replace (`config.json.tmp` -> `os.replace`) to guard against file truncation during abrupt shutdowns.
 
 ### v2.8.4
 - 🌟 **Telegram Stars Paid Media Support**: Added automated detection, extraction, and downloading for Telegram Stars paid media (`MessageMediaPaidMedia`). Accurately fetches unlocked full-quality photos and videos (including multi-item albums) for posts purchased by the user's account, while gracefully skipping unpaid posts with clear status reporting (`Skipped (X⭐ Unpaid)`).
@@ -358,9 +367,13 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## 🌟 About The Project
 
-**Telegram Bulk Media Downloader** is a high-performance, open-source initiative dedicated to providing a premium, desktop-native solution for archiving and managing Telegram content. 
+**Telegram Bulk Media Downloader** is a high-performance, open-source initiative dedicated to providing a premium, desktop-native solution for archiving, organizing, and managing Telegram content.
 
-Our mission is to bridge the gap between complex terminal-based downloaders and the user-friendly experience that modern creators and researchers deserve. By combining the robust [Telethon](https://github.com/LonamiWebs/Telethon) engine with a world-class **PySide6 Dashboard**, we've created a tool that is both incredibly powerful and effortless to use.
+Our mission is to bridge the gap between complex terminal-based scripts and the polished user experience modern creators, researchers, and archivists deserve. Built with Python, **PySide6**, and **Telethon**, the application combines:
+- **Maximum Throughput:** Turbo-charged chunk downloads with FastTelethon multi-part streaming.
+- **Unrestricted Access:** Built-in SOCKS5/HTTP proxy integration accessible before and after authentication.
+- **Rock-Solid Persistence:** Crash-proof queue states and history stored in an indexed SQLite database.
+- **Creator-Friendly Tools:** Automated chronological date naming, channel handle tags, and a dedicated File Manager.
 
 ---
 

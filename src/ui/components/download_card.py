@@ -356,20 +356,26 @@ class DownloadCard(QWidget):
         self.is_paused = not self.is_paused
         if self.is_paused:
             self.parent_worker.pause_download(self.task_id)
+            try:
+                from database import update_task_paused_db
+                update_task_paused_db(self.task_id, is_paused=True)
+            except Exception:
+                pass
             self.btn_pause.setText("▶ Resume")
             self.lbl_status_text.setText("Paused")
             self.lbl_status_text.setProperty("state", "paused")
             self.batch_progress_bar.setProperty("state", "paused")
         else:
-            parts = self.task_id.split('_')
-            topic_id = None
-            if len(parts) == 3:
-                channel_input, topic_id_str, media_id_str = parts
-                channel_input = f"{channel_input}_{topic_id_str}"
-                media_id = int(media_id_str)
+            parts = str(self.task_id).rsplit('_', 2)
+            media_id = 6
+            if len(parts) >= 2 and parts[-1].isdigit():
+                media_id = int(parts[-1])
+                if len(parts) == 3 and parts[-2].isdigit():
+                    channel_input = f"{parts[0]}_{parts[-2]}"
+                else:
+                    channel_input = str(self.task_id).rsplit('_', 1)[0]
             else:
-                channel_input, media_id_str = parts
-                media_id = int(media_id_str)
+                channel_input = self.task_id
                 
             self.parent_worker.start_download(
                 channel_input=channel_input, media_id=media_id,

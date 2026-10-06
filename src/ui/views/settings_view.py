@@ -35,22 +35,77 @@ def load_config():
     }
     if os.path.exists(CONFIG_FILE):
         try:
-            with open(CONFIG_FILE, "r") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                default_config.update(data)
+                if isinstance(data, dict):
+                    if "proxy" in data and isinstance(data["proxy"], dict):
+                        default_config["proxy"].update(data["proxy"])
+                        data_copy = dict(data)
+                        del data_copy["proxy"]
+                        default_config.update(data_copy)
+                    else:
+                        default_config.update(data)
         except Exception as e:
             print(f"Error loading config: {e}")
     return default_config
 
 def save_config(config_data):
     try:
-        with open(CONFIG_FILE, "w") as f:
+        temp_file = CONFIG_FILE + ".tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
             json.dump(config_data, f, indent=4)
+        os.replace(temp_file, CONFIG_FILE)
     except Exception as e:
         print(f"Error saving config: {e}")
 
+def get_telegram_proxy():
+    """
+    Returns a proxy dict suitable for Telethon if proxy is enabled and configured,
+    or None if proxy is disabled or invalid.
+    """
+    cfg = load_config()
+    proxy = cfg.get("proxy", {})
+    if not proxy.get("enabled", False):
+        return None
+
+    host = str(proxy.get("host", "")).strip()
+    port_val = proxy.get("port", "")
+    if not host or not port_val:
+        return None
+
+    try:
+        port = int(str(port_val).strip())
+        if not (1 <= port <= 65535):
+            return None
+    except (ValueError, TypeError):
+        return None
+
+    p_type = str(proxy.get("type", "SOCKS5")).strip().lower()
+    if p_type not in ("socks5", "socks4", "http"):
+        p_type = "socks5"
+
+    proxy_dict = {
+        "proxy_type": p_type,
+        "addr": host,
+        "port": port,
+        "rdns": True
+    }
+    user = proxy.get("user")
+    if user:
+        user_str = str(user).strip()
+        if user_str:
+            proxy_dict["username"] = user_str
+    pwd = proxy.get("pass")
+    if pwd:
+        pwd_str = str(pwd)
+        if pwd_str:
+            proxy_dict["password"] = pwd_str
+
+    return proxy_dict
+
 class SettingsView(QWidget):
     logoutRequested = Signal()
+    settingsSaved = Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setup_ui()
@@ -305,7 +360,8 @@ class SettingsView(QWidget):
         self.input_proxy_pass.setText(proxy.get("pass", ""))
 
     def save_settings(self):
-        config = {
+        config = load_config()
+        config.update({
             "download_path": self.input_path.text(),
             "download_limit": self.spin_limit.value(),
             "initial_fetch_limit": self.spin_fetch_limit.value(),
@@ -319,12 +375,12 @@ class SettingsView(QWidget):
             "proxy": {
                 "enabled": self.chk_enable_proxy.isChecked(),
                 "type": self.combo_proxy_type.currentText(),
-                "host": self.input_proxy_host.text(),
-                "port": self.input_proxy_port.text(),
-                "user": self.input_proxy_user.text(),
+                "host": self.input_proxy_host.text().strip(),
+                "port": self.input_proxy_port.text().strip(),
+                "user": self.input_proxy_user.text().strip(),
                 "pass": self.input_proxy_pass.text()
             }
-        }
+        })
         save_config(config)
         
         # Sync existing database tasks with updated limits
@@ -337,6 +393,8 @@ class SettingsView(QWidget):
             conn.commit()
             conn.close()
         except Exception: pass
+
+        self.settingsSaved.emit()
 
         # Notify user it was saved properly
         QMessageBox.information(self, "Settings Saved", "Configuration saved successfully!")

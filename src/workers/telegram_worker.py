@@ -49,14 +49,19 @@ class TelegramWorker(QThread):
         self.task_cancel_events = {}
         self.running_tasks = {} # task_id -> future or task
 
+    def _create_client(self):
+        from ui.views.settings_view import get_telegram_proxy
+        session_full_path = os.path.join(get_project_root(), self.session_name)
+        proxy = get_telegram_proxy()
+        return TelegramClient(session_full_path, self.api_id, self.api_hash, proxy=proxy, loop=self.loop)
+
     def run(self):
         """Thread entry point. Starts the asyncio event loop."""
         self.loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self.loop)
         
         try:
-            session_full_path = os.path.join(get_project_root(), self.session_name)
-            self.client = TelegramClient(session_full_path, self.api_id, self.api_hash, loop=self.loop)
+            self.client = self._create_client()
             self.loop.run_until_complete(self.check_auth())
         except ValueError:
             # API ID / Hash missing or invalid
@@ -72,10 +77,22 @@ class TelegramWorker(QThread):
         async def _reinit():
             if self.client:
                 await self.client.disconnect()
-            session_full_path = os.path.join(get_project_root(), self.session_name)
-            self.client = TelegramClient(session_full_path, self.api_id, self.api_hash, loop=self.loop)
+            self.client = self._create_client()
             await self.check_auth()
             
+        if self.loop:
+            asyncio.run_coroutine_threadsafe(_reinit(), self.loop)
+
+    def reload_client(self):
+        """Reloads TelegramClient with the latest proxy and settings from config."""
+        async def _reinit():
+            try:
+                if self.client:
+                    await self.client.disconnect()
+                self.client = self._create_client()
+                await self.check_auth()
+            except Exception as e:
+                print(f"DEBUG: reload_client error: {e}")
         if self.loop:
             asyncio.run_coroutine_threadsafe(_reinit(), self.loop)
 
@@ -141,8 +158,7 @@ class TelegramWorker(QThread):
                 if self.client:
                     await self.client.disconnect()
                 
-                session_full_path = os.path.join(get_project_root(), self.session_name)
-                self.client = TelegramClient(session_full_path, self.api_id, self.api_hash, loop=self.loop)
+                self.client = self._create_client()
                 await self.client.connect()
                 
                 if not await self.client.is_user_authorized():
@@ -285,33 +301,54 @@ class TelegramWorker(QThread):
         )
 
     def pause_download(self, task_id):
+        # 1. Trigger cancel event for active download loop
         if self.loop and task_id in self.task_cancel_events:
             event = self.task_cancel_events[task_id]
             self.loop.call_soon_threadsafe(event.set)
             
         try:
-            parts = task_id.split('_')
-            if len(parts) == 3:
-                ch_id, topic_id_str, media_id_str = parts
-                topic_id = int(topic_id_str)
-            else:
-                ch_id, media_id_str = parts
-                topic_id = None
-                
-            media_id = int(media_id_str)
-            ch_clean = ch_id.replace("-100", "", 1)
+            from database import normalize_channel_key, update_task_paused_db
+            parts = str(task_id).rsplit('_', 2)
+            media_id = None
+            topic_id = None
+            ch_raw = str(task_id)
+            if len(parts) >= 2 and parts[-1].isdigit():
+                media_id = int(parts[-1])
+                if len(parts) == 3 and parts[-2].isdigit():
+                    topic_id = int(parts[-2])
+                    ch_raw = parts[0]
+                else:
+                    ch_raw = str(task_id).rsplit('_', 1)[0]
+
+            ch_clean = normalize_channel_key(ch_raw)
+
             tasks = load_active_tasks()
             for t in tasks:
-                tk_chan = str(t.get("channel_input")).replace("-100", "", 1)
+                tk_chan = str(t.get("channel_input", ""))
+                tk_clean = normalize_channel_key(tk_chan)
+                tk_title = str(t.get("title", ""))
                 tk_media = t.get("media_id")
-                tk_topic = t.get("topic_id")
                 
-                if tk_chan == ch_clean and tk_media == media_id and tk_topic == topic_id:
+                matched = False
+                if str(t.get("task_id", "")) == str(task_id):
+                    matched = True
+                elif media_id is not None and tk_media == media_id:
+                    if ch_clean and tk_clean and ch_clean == tk_clean:
+                        matched = True
+                    elif tk_title and (tk_title == ch_raw or tk_title == ch_clean):
+                        matched = True
+                    elif ch_clean and ch_clean in tk_clean:
+                        matched = True
+
+                if matched:
                     t["paused"] = True
-                    break
+            
             save_active_tasks(tasks)
-        except Exception:
-            pass
+            update_task_paused_db(task_id, is_paused=True)
+            if ch_clean:
+                update_task_paused_db(ch_clean, is_paused=True)
+        except Exception as e:
+            print(f"Error in pause_download: {e}")
 
     def resume_download(self, channel_input, media_id, download_path, download_limit, max_speed_kb):
         # Explicitly pass is_paused=False to resume
@@ -323,29 +360,44 @@ class TelegramWorker(QThread):
             del self.task_cancel_events[task_id]
             
         try:
-            parts = task_id.split('_')
-            if len(parts) == 3:
-                ch_id, topic_id_str, media_id_str = parts
-                topic_id = int(topic_id_str)
-            else:
-                ch_id, media_id_str = parts
-                topic_id = None
-                
-            media_id = int(media_id_str)
-            ch_clean = ch_id.replace("-100", "", 1)
+            from database import normalize_channel_key
+            parts = str(task_id).rsplit('_', 2)
+            media_id = None
+            topic_id = None
+            ch_raw = str(task_id)
+            if len(parts) >= 2 and parts[-1].isdigit():
+                media_id = int(parts[-1])
+                if len(parts) == 3 and parts[-2].isdigit():
+                    topic_id = int(parts[-2])
+                    ch_raw = parts[0]
+                else:
+                    ch_raw = str(task_id).rsplit('_', 1)[0]
+
+            ch_clean = normalize_channel_key(ch_raw)
+
             tasks = load_active_tasks()
             new_tasks = []
             for t in tasks:
-                tk_chan = str(t.get("channel_input")).replace("-100", "", 1)
+                tk_chan = str(t.get("channel_input", ""))
+                tk_clean = normalize_channel_key(tk_chan)
+                tk_title = str(t.get("title", ""))
                 tk_media = t.get("media_id")
-                tk_topic = t.get("topic_id")
                 
-                if tk_chan == ch_clean and tk_media == media_id and tk_topic == topic_id:
-                    continue
-                new_tasks.append(t)
+                matched = False
+                if str(t.get("task_id", "")) == str(task_id):
+                    matched = True
+                elif media_id is not None and tk_media == media_id:
+                    if ch_clean and tk_clean and ch_clean == tk_clean:
+                        matched = True
+                    elif tk_title and (tk_title == ch_raw or tk_title == ch_clean):
+                        matched = True
+
+                if not matched:
+                    new_tasks.append(t)
+
             save_active_tasks(new_tasks)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error in cancel_download: {e}")
 
     async def _download_coro(self, channel_input, media_id, download_path, download_limit, max_speed_kb, is_paused, selected_message_ids, original_task_id=None):
         try:
@@ -397,34 +449,41 @@ class TelegramWorker(QThread):
             if topic_id:
                 title = f"{title} (Topic: {topic_id})"
             
-            # 1. Update active_tasks.json to use the numeric ID for future persistence
+            # 1. Update active_tasks to use the numeric ID for future persistence and deduplicate
             try:
+                from database import normalize_channel_key
                 tasks = load_active_tasks()
                 updated_tasks = []
                 found_and_updated = False
                 
-                ch_resolved_clean = resolved_chan_id.replace("-100", "", 1) if resolved_chan_id.startswith("-100") else resolved_chan_id
+                ch_resolved_clean = normalize_channel_key(resolved_chan_id)
                 for tk in tasks:
+                    tk_chan_raw = str(tk.get("channel_input", ""))
+                    tk_chan_clean = normalize_channel_key(tk_chan_raw)
+                    tk_title = str(tk.get("title", ""))
+                    
                     match = False
-                    tk_chan_raw = str(tk.get("channel_input"))
-                    tk_chan_clean = tk_chan_raw.replace("-100", "", 1) if tk_chan_raw.startswith("-100") else tk_chan_raw
-                    # If this is the task we just resolved (either by input string or numeric ID)
                     if tk.get("media_id") == media_id and tk.get("topic_id") == topic_id:
-                        # Match either by exact string OR by clean ID equivalence
-                        if tk_chan_raw == str(channel_input) or tk_chan_clean == ch_resolved_clean:
+                        if tk_chan_clean == ch_resolved_clean or tk_chan_raw == str(channel_input) or tk_title == title:
                             match = True
                     
-                    if match and not found_and_updated:
-                        tk["channel_input"] = resolved_chan_id
-                        tk["title"] = title # PERSIST TITLE
-                        updated_tasks.append(tk)
-                        found_and_updated = True
+                    if match:
+                        if not found_and_updated:
+                            tk["channel_input"] = resolved_chan_id
+                            tk["title"] = title # PERSIST TITLE
+                            tk["task_id"] = task_id
+                            if is_paused:
+                                tk["paused"] = True
+                            updated_tasks.append(tk)
+                            found_and_updated = True
+                        # If already found and updated, discard duplicate ghost entry
                     else:
                         updated_tasks.append(tk)
                 
                 # If for some reason it wasn't in the list, add it now (integrity check)
                 if not found_and_updated:
                     updated_tasks.append({
+                        "task_id": task_id,
                         "channel_input": resolved_chan_id,
                         "media_id": media_id,
                         "topic_id": topic_id,
@@ -432,7 +491,8 @@ class TelegramWorker(QThread):
                         "download_path": download_path,
                         "download_limit": download_limit,
                         "max_speed_kb": max_speed_kb,
-                        "selected_message_ids": selected_message_ids
+                        "selected_message_ids": selected_message_ids,
+                        "title": title
                     })
                 save_active_tasks(updated_tasks)
             except Exception as e:
