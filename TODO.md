@@ -12,7 +12,7 @@ This document tracks the vision and high-level goals for the major **v3.0.0** re
 - [ ] **Segmented Multi-Connection**: Implement 8-16 parallel chunks per file for maximum throughput.
 - [ ] **Auto-Cloud Synchronization**: Direct upload integration for **Google Drive, Dropbox, and OneDrive**.
 - [ ] **External Engine Support**: Built-in support for of-loading tasks to **Aria2 or JDownloader 2**.
-- [ ] **Anti-Flood Smart Pacing**: Intelligent traffic management to avoid Telegram's "Flood Wait" limits.
+- [x] **Anti-Flood Smart Pacing**: Intelligent traffic management to avoid Telegram's "Flood Wait" limits.
 
 ## 🎨 Visual & UI/UX Excellence
 - [ ] **Media Preview Gallery View**: High-resolution grid-based thumbnail browser for easier selection.
@@ -42,7 +42,14 @@ This document tracks the vision and high-level goals for the major **v3.0.0** re
 
 ## ✅ Roadmap
 
-- **Current Version**: 2.8.4
+- **Current Version**: 2.8.6
+- **Completed in v2.8.6**:
+  - [x] **Anti-Flood Smart Pacing & Shared Circuit Breaker**: Proactive inter-worker burst spacing (20ms) and shared reactive FloodWait circuit breaker that halts all FastTelethon workers and downloads on `FloodWaitError` with half-open cooldown recovery.
+  - [x] **Windows File Lock Protection**: Added retry handling for atomic config file replacement on Windows to prevent file-lock collisions.
+- **Completed in v2.8.5**:
+  - [x] **End-to-End Proxy Support**: Plumbed SOCKS5, SOCKS4, and HTTP proxy support across all TelegramClient connections.
+  - [x] **Pre-Login Proxy Configuration**: Added proxy setup dialog accessible prior to authentication.
+  - [x] **Settings & Dark Mode Retention**: Merged settings cleanly into config to preserve theme preferences.
 - **Completed in v2.8.4**:
   - [x] **Telegram Stars Paid Media**: Detect, unpack, and download purchased Star photos, videos, and multi-media albums (`MessageMediaPaidMedia`).
   - [x] **Channel Handle Filename Prefixing**: Prepend `@{username}_` or `channel_title_` to downloaded media filenames via GUI setting toggle.

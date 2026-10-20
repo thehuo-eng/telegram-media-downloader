@@ -155,6 +155,13 @@ Go to **Settings → Download Limit** to adjust how many files download simultan
 
 ## Changelog
 
+### v2.8.6
+- 🛡️ **Proactive Anti-Flood Gate & Circuit Breaker**: Introduced a zero-dependency shared `DownloadFloodGate` for FastTelethon parallel chunk workers. Prevents cascading multi-hour Telegram bans by coordinating all concurrent workers and download tasks.
+- ⏱️ **Inter-Worker Request Burst Pacing**: Eliminates 0ms microsecond burst spikes by gently pacing chunk dispatches across all parallel streams.
+- ⚡ **Shared Reactive Circuit Breaker**: When any worker or download encounters a `FloodWaitError`, all workers across all active downloads pause immediately for the full wait duration plus safety buffer, preventing Telegram from escalating the restriction.
+- 🔄 **Half-Open Cooldown Recovery**: After a flood-wait clears, workers resume in a restricted pacing window to allow cooling endpoints to stabilize before returning to full throughput.
+- 🪟 **Atomic Config File Lock Protection**: Added retry handling for atomic configuration file replacement on Windows, preventing file-lock collisions during rapid setting updates.
+
 ### v2.8.5
 - 🌐 **End-to-End Proxy Support**: Plumbed proxy routing directly into all `TelegramClient` connection instances using `python-socks[asyncio]`. Fully supports SOCKS5, SOCKS4, and HTTP proxies across all authentication calls, dialog fetches, and multi-part media downloads.
 - 🚪 **Pre-Login Proxy Configuration**: Added a "🌐 Network & Proxy Settings" modal dialog directly on the login card, enabling users on blocked networks to configure and save their proxy before authenticating or requesting OTP codes.

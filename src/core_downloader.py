@@ -21,7 +21,7 @@ from telethon.tl.types import (
 )
 from database import save_task_db, load_active_tasks_db, remove_task_db, cache_media_list, mark_media_completed, get_completed_state_db
 from utils.file_utils import get_media_filename
-from utils.fast_telethon import fast_download_file, _atomic_finalize_sync
+from utils.fast_telethon import fast_download_file, _atomic_finalize_sync, GLOBAL_FLOODGATE
 
 def load_active_tasks():
     return load_active_tasks_db()
@@ -366,6 +366,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
 
                     if not downloaded_file:
                         try:
+                            await GLOBAL_FLOODGATE.wait_if_gated(cancel_event)
                             downloaded_file = await client.download_media(
                                 actual_media,
                                 file=item_path,
@@ -507,6 +508,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
 
             if not file_path:
                 try:
+                    await GLOBAL_FLOODGATE.wait_if_gated(cancel_event)
                     file_path = await message.download_media(
                         file=target_path,
                         progress_callback=internal_progress,
@@ -519,6 +521,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
                     if "location" in str(attr_err) and getattr(message, 'photo', None):
                         try:
                             # Strategy 1: Download the photo object directly (higher level, often bypasses the bug)
+                            await GLOBAL_FLOODGATE.wait_if_gated(cancel_event)
                             file_path = await client.download_media(
                                 message.photo,
                                 file=target_path,
@@ -606,6 +609,9 @@ async def download_single_file(client, channel, message, folder_name, progress_c
             if complete_cb: complete_cb(message.id, paused=True, filepath=None)
             break
         except Exception as e:
+            from telethon.errors import FloodWaitError
+            if isinstance(e, FloodWaitError):
+                GLOBAL_FLOODGATE.trip(getattr(e, 'seconds', 2))
             if attempt < max_retries - 1:
                 wait_time = getattr(e, 'seconds', 2)
                 print(f"Error downloading {message.id}, retrying in {wait_time}s ({attempt+1}/{max_retries}): {e}")
