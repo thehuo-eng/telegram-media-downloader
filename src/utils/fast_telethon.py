@@ -17,7 +17,9 @@ def _load_meta(meta_path, file_size, total_parts):
         with open(meta_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             if data.get("file_size") == file_size and data.get("total_parts") == total_parts:
-                return set(data.get("completed_parts", []))
+                parts = data.get("completed_parts", [])
+                if all(isinstance(p, int) and 0 <= p < total_parts for p in parts):
+                    return set(parts)
     except Exception:
         pass
     return set()
@@ -35,6 +37,8 @@ def _save_meta(meta_path, file_size, chunk_size, total_parts, completed_parts):
         }
         with open(temp_meta, "w", encoding="utf-8") as f:
             json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
         if os.path.exists(temp_meta):
             os.replace(temp_meta, meta_path)
     except Exception:
@@ -45,12 +49,11 @@ def _atomic_finalize_sync(temp_path, target_path, meta_path=None):
     """Atomically renames temp_path to target_path with retries for Windows file locks."""
     for attempt in range(5):
         try:
-            if os.path.exists(target_path):
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
-            os.replace(temp_path, target_path)
+            if os.name == 'nt':
+                os.rename(temp_path, target_path)
+            else:
+                os.link(temp_path, target_path)
+                os.unlink(temp_path)
             # Remove meta_path only after temp_path is successfully renamed to target_path
             if meta_path and os.path.exists(meta_path):
                 try:
@@ -58,6 +61,8 @@ def _atomic_finalize_sync(temp_path, target_path, meta_path=None):
                 except Exception:
                     pass
             return True
+        except FileExistsError:
+            raise
         except (PermissionError, OSError) as e:
             if attempt < 4:
                 time.sleep(0.3)
@@ -70,12 +75,11 @@ async def _atomic_finalize_async(temp_path, target_path, meta_path=None):
     """Async atomic rename with retries for Windows file locks."""
     for attempt in range(5):
         try:
-            if os.path.exists(target_path):
-                try:
-                    os.remove(target_path)
-                except Exception:
-                    pass
-            os.replace(temp_path, target_path)
+            if os.name == 'nt':
+                os.rename(temp_path, target_path)
+            else:
+                os.link(temp_path, target_path)
+                os.unlink(temp_path)
             # Remove meta_path only after temp_path is successfully renamed to target_path
             if meta_path and os.path.exists(meta_path):
                 try:
@@ -83,6 +87,8 @@ async def _atomic_finalize_async(temp_path, target_path, meta_path=None):
                 except Exception:
                     pass
             return True
+        except FileExistsError:
+            raise
         except (PermissionError, OSError) as e:
             if attempt < 4:
                 await asyncio.sleep(0.3)
@@ -372,6 +378,9 @@ async def fast_download_file(client, location, target_path, file_size, dc_id=Non
                 queue.task_done()
                 continue
 
+            expected = min(CHUNK_SIZE, file_size - offset)
+            if len(chunk) < expected:
+                raise IOError("Telegram returned an incomplete download chunk")
             # If last chunk returned extra padding past file_size, trim it
             if offset + len(chunk) > file_size:
                 chunk = chunk[:file_size - offset]
@@ -379,6 +388,9 @@ async def fast_download_file(client, location, target_path, file_size, dc_id=Non
             async with lock:
                 file_handle.seek(offset)
                 file_handle.write(chunk)
+                # Persist bytes before recording their completion, including abrupt process exit.
+                file_handle.flush()
+                os.fsync(file_handle.fileno())
                 downloaded_bytes[0] += len(chunk)
                 completed_parts.add(part_idx)
                 current = downloaded_bytes[0]
@@ -398,10 +410,13 @@ async def fast_download_file(client, location, target_path, file_size, dc_id=Non
     try:
         tasks = [asyncio.create_task(worker()) for _ in range(min(workers, len(missing_parts)))]
         await asyncio.gather(*tasks)
-    except (DownloadCancelled, asyncio.CancelledError):
+    except DownloadCancelled:
         # User paused/cancelled: persist current meta for future resume
         _save_meta(meta_path, file_size, CHUNK_SIZE, total_parts, completed_parts)
         return False
+    except asyncio.CancelledError:
+        _save_meta(meta_path, file_size, CHUNK_SIZE, total_parts, completed_parts)
+        raise
     except Exception as e:
         _save_meta(meta_path, file_size, CHUNK_SIZE, total_parts, completed_parts)
         raise e
@@ -424,7 +439,7 @@ async def fast_download_file(client, location, target_path, file_size, dc_id=Non
         _save_meta(meta_path, file_size, CHUNK_SIZE, total_parts, completed_parts)
         return False
 
-    if len(completed_parts) == total_parts or downloaded_bytes[0] >= file_size:
+    if len(completed_parts) == total_parts and downloaded_bytes[0] == file_size:
         await _atomic_finalize_async(temp_path, target_path, meta_path)
         return True
 

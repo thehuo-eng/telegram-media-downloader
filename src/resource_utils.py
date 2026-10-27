@@ -14,9 +14,18 @@ def get_resource_path(relative_path: str) -> str:
 
 def get_project_root() -> str:
     """Get the persistent project root where .env, config.json, and session files should be stored."""
+    override = os.environ.get('TSD_DATA_DIR')
+    if override:
+        os.makedirs(override, exist_ok=True)
+        return os.path.abspath(override)
     if getattr(sys, 'frozen', False):
-        # Running as .exe
-        return os.path.dirname(sys.executable)
+        # Preserve existing portable installations; new installs use a writable user directory.
+        portable = os.path.dirname(sys.executable)
+        if os.path.exists(os.path.join(portable, 'downloader.db')):
+            return portable
+        data_dir = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~')), 'TelegramSmartDownloader')
+        os.makedirs(data_dir, exist_ok=True)
+        return data_dir
     
     # Development: Root is one level above 'src/'
     # Assuming this file is in 'src/resource_utils.py'

@@ -1,4 +1,15 @@
 venv/
+.venv/
+.pytest_cache/
+.test-data/
+.smart-data/
+*.db-wal
+*.db-shm
+*.session-*
+*.part
+*.part.meta
+*.ready
+*.lock
 .env
 .env.local
 *.session

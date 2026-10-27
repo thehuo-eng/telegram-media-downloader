@@ -14,6 +14,7 @@ from ui.views.settings_view import SettingsView
 from ui.views.downloads_view import DownloadsView
 from ui.views.file_manager_view import FileManagerView
 from ui.views.login_view import LoginView
+from ui.views.smart_view import SmartView
 from PySide6.QtGui import QCloseEvent, QAction
 from resource_utils import get_resource_path
 from utils.update_checker import UpdateChecker
@@ -24,7 +25,7 @@ class MainWindow(QMainWindow):
         print("DEBUG: MainWindow __init__ started")
         self.worker = telegram_worker
         self.version = version
-        self.setWindowTitle(f"TG Media Downloader v{version} (PySide6)")
+        self.setWindowTitle(f"Telegram Smart Downloader {version}")
         self.resize(1100, 700)
         self.setMinimumSize(750, 500)
         self._is_authenticating = False
@@ -45,6 +46,8 @@ class MainWindow(QMainWindow):
         print("DEBUG: MainWindow __init__ DONE")
 
     def check_for_updates(self):
+        if "smart" in self.version or "--smoke-test" in __import__('sys').argv:
+            return
         self.update_checker = UpdateChecker(self.version, self)
         self.update_checker.update_available.connect(self.show_update_notification)
         self.update_checker.start()
@@ -169,6 +172,7 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
+        self.page_smart.shutdown()
         # 🟢 Clean up Update Checker
         if hasattr(self, 'update_checker') and self.update_checker.isRunning():
             self.update_checker.wait(500)
@@ -219,18 +223,21 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.logo_container)
 
         # 2. Nav Buttons (Now using original icons from assets)
-        self.btn_home = self._create_nav_button("Home", "home.png", True)
-        self.btn_queue = self._create_nav_button("Queue", "download.png")
-        self.btn_files = self._create_nav_button("Files", "files.png")
-        self.btn_settings = self._create_nav_button("Settings", "setting.png")
-        self.btn_about = self._create_nav_button("About", "info.png")
+        self.btn_smart = self._create_nav_button("스마트", "home.png", True)
+        self.btn_home = self._create_nav_button("기존 기능", "home.png")
+        self.btn_queue = self._create_nav_button("기존 대기열", "download.png")
+        self.btn_files = self._create_nav_button("기존 파일", "files.png")
+        self.btn_settings = self._create_nav_button("설정", "setting.png")
+        self.btn_about = self._create_nav_button("정보", "info.png")
 
         self.btn_home.clicked.connect(lambda: self.switch_page("Home", 0))
         self.btn_queue.clicked.connect(lambda: self.switch_page("Queue", 1))
         self.btn_files.clicked.connect(lambda: self.switch_page("Files", 2))
         self.btn_settings.clicked.connect(lambda: self.switch_page("Settings", 3))
         self.btn_about.clicked.connect(lambda: self.switch_page("About", -1))
+        self.btn_smart.clicked.connect(lambda: self.switch_page("Smart", 5))
 
+        sidebar_layout.addWidget(self.btn_smart)
         sidebar_layout.addWidget(self.btn_home)
         sidebar_layout.addWidget(self.btn_queue)
         sidebar_layout.addWidget(self.btn_files)
@@ -246,7 +253,7 @@ class MainWindow(QMainWindow):
         self.update_theme_icon() # Set initial icon
         sidebar_layout.addWidget(self.btn_theme)
 
-        self.btn_logout = self._create_nav_button("Logout", "logout.png")
+        self.btn_logout = self._create_nav_button("로그아웃", "logout.png")
         self.btn_logout.setObjectName("LogoutBtn")
         self.btn_logout.setAutoExclusive(False)
         self.btn_logout.setCheckable(False)
@@ -288,12 +295,18 @@ class MainWindow(QMainWindow):
         self.page_files = FileManagerView()
         self.page_settings = SettingsView()
         self.page_login = LoginView()
+        from database import DB_PATH
+        self.page_smart = SmartView(self.worker, DB_PATH)
+        self.page_smart.login_requested.connect(self.prompt_login)
         
         self.stacked_widget.addWidget(self.page_home)     # Index 0
         self.stacked_widget.addWidget(self.page_queue)    # Index 1
         self.stacked_widget.addWidget(self.page_files)    # Index 2
         self.stacked_widget.addWidget(self.page_settings) # Index 3
         self.stacked_widget.addWidget(self.page_login)    # Index 4
+        self.stacked_widget.addWidget(self.page_smart)    # Index 5
+        self.stacked_widget.setCurrentWidget(self.page_smart)
+        self.header.hide()
         
         # Connect Login signals
         self.page_login.login_started.connect(self.worker.start_login)
@@ -387,7 +400,11 @@ class MainWindow(QMainWindow):
 
     def switch_page(self, item_text, index):
         # Update button states visually if needed (AutoExclusive handles checking)
-        if "Home" in item_text:
+        if "Smart" in item_text:
+            self.header.hide()
+            self.stacked_widget.setCurrentWidget(self.page_smart)
+            self.btn_smart.setChecked(True)
+        elif "Home" in item_text:
             self.header.show()
             self.stacked_widget.setCurrentIndex(0)
             self.btn_home.setChecked(True)
@@ -437,7 +454,7 @@ class MainWindow(QMainWindow):
         icon_path = get_resource_path(os.path.join("assets", "icons", icon_name))
         if os.path.exists(icon_path):
             self.btn_theme.setIcon(QIcon(icon_path))
-            self.btn_theme.setText("Dark" if is_dark else "Light")
+            self.btn_theme.setText("어두운 테마" if is_dark else "밝은 테마")
 
     # ---------------------------------------------------------
     # Actions & Signals
@@ -481,7 +498,8 @@ class MainWindow(QMainWindow):
 
     def prompt_login(self):
         self._is_authenticating = True
-        self.sidebarWidget.hide()
+        self.sidebarWidget.show()
+        self.header.hide()
         self.page_login.reset_to_start()
         self.stacked_widget.setCurrentWidget(self.page_login)
 
@@ -506,7 +524,7 @@ class MainWindow(QMainWindow):
     def on_auth_success(self):
         if self._is_authenticating:
             self.sidebarWidget.show()
-            self.switch_page("Home", 0)
+            self.switch_page("Smart", 5)
             self._is_authenticating = False
             auth_dialogs.show_auth_success(self)
         self.load_active_tasks_from_worker()

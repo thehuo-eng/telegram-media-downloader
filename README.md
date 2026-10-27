@@ -1,5 +1,13 @@
 # Telegram Bulk Media Downloader
 
+## Telegram Smart Downloader (Korean Windows edition)
+
+This fork adds filename keyword categories, per-file classification previews, global SHA-256 deduplication, resumable queues, and a Korean GUI while preserving the upstream features and MIT license.
+
+**[한국어 사용 설명서 · 실행 · EXE 빌드](README.ko.md)** · [Architecture](docs/SMART_ARCHITECTURE.md) · [Validation](docs/VALIDATION.md)
+
+Build the smart edition with `build_windows.ps1`; the executable is `dist/TelegramSmartDownloader.exe`. The upstream documentation below remains available for the original UI.
+
 [![GitHub Release](https://img.shields.io/github/v/release/vinodkr494/telegram-media-downloader?style=flat-square)](https://github.com/vinodkr494/telegram-media-downloader/releases/latest)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/vinodkr494/telegram-media-downloader/total?style=flat-square)](https://github.com/vinodkr494/telegram-media-downloader/releases)
 🚀 **Bulk-download videos, images, PDFs, audio & more** from any Telegram channel or group. Features a **Premium PySide6 Dashboard** with high-performance analytics, **Global Queue Tracking** (Total progress % & Session usage), **Advanced Task Management** (Prioritize & Cancel), category browser, real-time search, parallel downloads, smart deduplication, speed limiter, proxy support, and desktop notifications.

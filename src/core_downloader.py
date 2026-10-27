@@ -202,13 +202,9 @@ def get_unique_filepath(folder, filename, reserved_paths=None):
         # 1. Check in-memory reservation for concurrent downloads
         if reserved_paths is not None and (path in reserved_paths or (path + ".part") in reserved_paths):
             return True
-        # 2. Check if file exists on disk with content > 0 bytes
-        if os.path.exists(path):
-            try:
-                if os.path.getsize(path) > 0:
-                    return True
-            except Exception:
-                return True
+        # Even an empty existing user file must never be overwritten.
+        if os.path.lexists(path):
+            return True
         # 3. Check if active/in-progress .part file exists on disk with content > 0 bytes
         if os.path.exists(path + ".part"):
             try:
@@ -452,6 +448,10 @@ async def download_single_file(client, channel, message, folder_name, progress_c
                             complete_cb(message.id, filepath=expected_filepath)
                         return
 
+                    # An existing shorter file may belong to the user. Allocate a new name.
+                    expected_filepath = get_unique_filepath(folder_name, file_name, reserved_paths=reserved_paths)
+                    update_media_downloaded_path(c_id, message.id, os.path.basename(expected_filepath))
+
                 # 2. Check if .part file is genuinely fully downloaded and can be finalized
                 part_path = expected_filepath + ".part"
                 meta_path = expected_filepath + ".part.meta"
@@ -597,7 +597,7 @@ async def download_single_file(client, channel, message, folder_name, progress_c
                         base_path = os.path.splitext(file_path)[0]
                         txt_path = base_path + ".txt"
                         try:
-                            with open(txt_path, "w", encoding="utf-8") as f:
+                            with open(txt_path, "x", encoding="utf-8") as f:
                                 f.write(msg_text)
                             if use_message_date and getattr(message, 'date', None):
                                 os.utime(txt_path, (mtime, mtime))

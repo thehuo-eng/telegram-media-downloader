@@ -74,15 +74,31 @@ def apply_theme(is_dark=False):
     qss_path = get_resource_path(os.path.join("assets", "styles", filename))
     if os.path.exists(qss_path):
         with open(qss_path, "r", encoding="utf-8") as f:
-            _app_instance.setStyleSheet(f.read())
+            from ui.smart_theme import stylesheet
+            _app_instance.setStyleSheet(f.read() + stylesheet(is_dark))
 
 
 def launch_app(telegram_worker, version="unknown"):
     global _app_instance
     _app_instance = QApplication(sys.argv)
+    # One process per data directory protects queue and staging ownership.
+    from PySide6.QtCore import QLockFile
+    from PySide6.QtWidgets import QMessageBox
+    from resource_utils import get_project_root
+    instance_lock = QLockFile(os.path.join(get_project_root(), 'smart-downloader.lock'))
+    instance_lock.setStaleLockTime(0)
+    if not instance_lock.tryLock(0):
+        QMessageBox.information(None, "이미 실행 중", "같은 데이터 폴더의 프로그램이 이미 실행 중입니다.")
+        return
 
     from PySide6.QtGui import QIcon, QFont
-    _app_instance.setFont(QFont("Segoe UI", 9))
+    if "--smoke-test" in sys.argv and os.name == "nt":
+        from PySide6.QtGui import QFontDatabase
+        for name in ('malgun.ttf', 'malgunbd.ttf', 'segoeui.ttf'):
+            path = os.path.join(os.environ.get('WINDIR', 'C:\\Windows'), 'Fonts', name)
+            if os.path.isfile(path):
+                QFontDatabase.addApplicationFont(path)
+    _app_instance.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Sans Serif", 9))
 
     icon_path = get_resource_path(os.path.join("assets", "logo.ico"))
     if os.path.exists(icon_path):
@@ -109,7 +125,12 @@ def launch_app(telegram_worker, version="unknown"):
     window.show()
 
     # Start the worker thread
-    telegram_worker.start()
+    if "--smoke-test" in sys.argv:
+        from PySide6.QtCore import QTimer
+        from smart.smoke import finish_smoke
+        QTimer.singleShot(1200, lambda: finish_smoke(window, _app_instance))
+    else:
+        telegram_worker.start()
 
     exit_code = _app_instance.exec()
     

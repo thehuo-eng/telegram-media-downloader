@@ -49,7 +49,7 @@ class LoginView(QWidget):
             logo_lbl.setPixmap(pix)
         logo_lbl.setAlignment(Qt.AlignCenter)
 
-        lbl_app = QLabel("Telegram Downloader")
+        lbl_app = QLabel("텔레그램 연결")
         lbl_app.setObjectName("LoginHeader")
         lbl_app.setAlignment(Qt.AlignCenter)
 
@@ -80,12 +80,13 @@ class LoginView(QWidget):
 
         self.inp_api_id   = QLineEdit(); self.inp_api_id.setPlaceholderText("e.g. 12345678")
         self.inp_api_hash = QLineEdit(); self.inp_api_hash.setPlaceholderText("32-char hex string")
-        self.inp_phone    = QLineEdit(); self.inp_phone.setPlaceholderText("+91 98765 43210")
+        self.inp_phone    = QLineEdit(); self.inp_phone.setPlaceholderText("+82 10 1234 5678")
+        self.inp_api_hash.setEchoMode(QLineEdit.Password)
 
         for w in (self.inp_api_id, self.inp_api_hash, self.inp_phone):
             w.setMinimumHeight(38)
 
-        self.btn_send_code = QPushButton("Send Verification Code")
+        self.btn_send_code = QPushButton("인증 코드 받기")
         self.btn_send_code.setObjectName("PrimaryButtonLarge")
         self.btn_send_code.setMinimumHeight(42)
         self.btn_send_code.clicked.connect(self.on_send_code)
@@ -94,13 +95,13 @@ class LoginView(QWidget):
         l1.addWidget(self.inp_api_id)
         l1.addWidget(_lbl("API Hash"))
         l1.addWidget(self.inp_api_hash)
-        l1.addWidget(_lbl("Phone Number (with country code)"))
+        l1.addWidget(_lbl("전화번호 (국가 번호 포함)"))
         l1.addWidget(self.inp_phone)
         l1.addSpacing(12)
         l1.addWidget(self.btn_send_code)
         l1.addSpacing(6)
 
-        self.btn_proxy = QPushButton("🌐 Network & Proxy Settings")
+        self.btn_proxy = QPushButton("네트워크 · 프록시 설정")
         self.btn_proxy.setObjectName("SecondaryButton")
         self.btn_proxy.setMinimumHeight(38)
         self.btn_proxy.setCursor(Qt.PointingHandCursor)
@@ -113,26 +114,26 @@ class LoginView(QWidget):
         l2.setContentsMargins(0, 0, 0, 0)
         l2.setSpacing(8)
 
-        hint2 = QLabel("📲 Check your Telegram app for the code.")
+        hint2 = QLabel("텔레그램 앱으로 받은 인증 코드를 입력하세요.")
         hint2.setObjectName("MutedText")
         hint2.setWordWrap(True)
 
         self.inp_code = QLineEdit()
-        self.inp_code.setPlaceholderText("Enter 5-digit code")
+        self.inp_code.setPlaceholderText("인증 코드 입력")
         self.inp_code.setMinimumHeight(38)
 
-        self.btn_submit_code = QPushButton("Verify & Login")
+        self.btn_submit_code = QPushButton("확인 · 로그인")
         self.btn_submit_code.setObjectName("PrimaryButtonLarge")
         self.btn_submit_code.setMinimumHeight(42)
         self.btn_submit_code.clicked.connect(self.on_submit_code)
 
-        self.btn_back = QPushButton("← Back")
+        self.btn_back = QPushButton("← 돌아가기")
         self.btn_back.setObjectName("LinkButton")
         self.btn_back.clicked.connect(self.reset_to_start)
 
         l2.addWidget(hint2)
         l2.addSpacing(8)
-        l2.addWidget(_lbl("Verification Code"))
+        l2.addWidget(_lbl("인증 코드"))
         l2.addWidget(self.inp_code)
         l2.addSpacing(12)
         l2.addWidget(self.btn_submit_code)
@@ -144,22 +145,22 @@ class LoginView(QWidget):
         l3.setContentsMargins(0, 0, 0, 0)
         l3.setSpacing(8)
 
-        hint3 = QLabel("🔐 Two-step verification is enabled.")
+        hint3 = QLabel("2단계 인증 비밀번호가 필요합니다.")
         hint3.setObjectName("MutedText")
 
         self.inp_pwd = QLineEdit()
         self.inp_pwd.setEchoMode(QLineEdit.Password)
-        self.inp_pwd.setPlaceholderText("Your 2FA password")
+        self.inp_pwd.setPlaceholderText("텔레그램 2단계 인증 비밀번호")
         self.inp_pwd.setMinimumHeight(38)
 
-        self.btn_submit_pwd = QPushButton("Submit Password")
+        self.btn_submit_pwd = QPushButton("비밀번호 확인")
         self.btn_submit_pwd.setObjectName("PrimaryButtonLarge")
         self.btn_submit_pwd.setMinimumHeight(42)
         self.btn_submit_pwd.clicked.connect(self.on_submit_pwd)
 
         l3.addWidget(hint3)
         l3.addSpacing(8)
-        l3.addWidget(_lbl("2FA Password"))
+        l3.addWidget(_lbl("2단계 인증 비밀번호"))
         l3.addWidget(self.inp_pwd)
         l3.addSpacing(12)
         l3.addWidget(self.btn_submit_pwd)
@@ -201,6 +202,11 @@ class LoginView(QWidget):
         phone    = self.inp_phone.text().strip()
         if not api_id or not api_hash or not phone:
             return
+        import re
+        if not api_id.isdigit() or int(api_id) <= 0 or not re.fullmatch(r'[a-fA-F0-9]{32}', api_hash):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(self, "API 정보 확인", "API ID는 양의 정수, API Hash는 32자리 16진수로 입력하세요.")
+            return
         # Find project root
         from resource_utils import get_project_root
         env_path = os.path.join(get_project_root(), '.env')
@@ -231,7 +237,7 @@ class LoginView(QWidget):
         except Exception as e:
             print(f"Error saving .env: {e}")
         self.btn_send_code.setEnabled(False)
-        self.btn_send_code.setText("Connecting…")
+        self.btn_send_code.setText("연결 중…")
         self.login_started.emit(api_id, api_hash, phone)
 
     def on_submit_code(self):
@@ -258,7 +264,7 @@ class LoginView(QWidget):
 
     def reset_to_start(self):
         self.btn_send_code.setEnabled(True)
-        self.btn_send_code.setText("Send Verification Code")
+        self.btn_send_code.setText("인증 코드 받기")
         self.stack.setCurrentIndex(0)
 
     def open_proxy_settings(self):

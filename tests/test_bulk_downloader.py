@@ -80,12 +80,12 @@ class TestBulkDownloader(unittest.TestCase):
         target2 = get_unique_filepath(self.temp_dir, "test.mp4")
         self.assertEqual(os.path.basename(target2), "test (2).mp4")
 
-        # 3. When 0-byte file exists (abandoned attempt), it should reuse it
+        # 3. Existing zero-byte files can be user data and must be preserved.
         empty_file = os.path.join(self.temp_dir, "empty.mp4")
         with open(empty_file, "w"):
             pass
         target3 = get_unique_filepath(self.temp_dir, "empty.mp4")
-        self.assertEqual(target3, empty_file)
+        self.assertEqual(os.path.basename(target3), "empty (2).mp4")
 
     def test_get_messages_by_type_filtering(self):
         raw_msgs = [

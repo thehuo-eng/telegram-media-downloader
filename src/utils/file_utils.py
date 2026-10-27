@@ -8,11 +8,8 @@ def sanitize_filename(filename: str) -> str:
     """
     if not filename:
         return ""
-    # Strip invalid filesystem characters
-    sanitized = re.sub(r'[<>:"/\\|?*]', '_', filename)
-    # Strip leading/trailing whitespaces and dots (dots at end can be problematic on Windows)
-    sanitized = sanitized.strip().strip('.')
-    return sanitized or "file"
+    from smart.rules import safe_filename
+    return safe_filename(filename)
 
 def get_media_filename(message, prefix_date=None, default_ext=None, channel=None, prefix_channel=None, target_media=None, sub_index=None) -> str:
     """

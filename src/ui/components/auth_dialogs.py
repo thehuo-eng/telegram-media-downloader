@@ -34,7 +34,7 @@ def prompt_password(parent):
     return None
 
 def show_auth_error(parent, error_msg):
-    QMessageBox.critical(parent, "Authentication Error", f"Login failed:\n{error_msg}")
+    QMessageBox.critical(parent, "로그인 오류", f"로그인하지 못했습니다:\n{error_msg}")
 
 def show_auth_success(parent):
-    QMessageBox.information(parent, "Success", "Logged in successfully!")
+    QMessageBox.information(parent, "연결 완료", "텔레그램에 로그인했습니다.")

@@ -1,7 +1,7 @@
 import os
 import sys
 
-APP_VERSION = "2.8.6"
+APP_VERSION = "3.0.0-smart"
 
 # We add src to path so absolute imports within src work cleanly
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -70,4 +70,4 @@ if __name__ == "__main__":
         print(f"FATAL ERROR AT ENTRY: {e}")
         import traceback
         traceback.print_exc()
-        input("Press Enter to close...") # Hold the terminal open
+        sys.exit(1)
