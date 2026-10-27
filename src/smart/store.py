@@ -296,7 +296,7 @@ class SmartStore:
         """Only exact, application-owned transient names after a successful DB commit."""
         parent = self.stage(item, create=False).parent
         for name in ("payload.ready", "payload.ready.part", "payload.ready.part.meta",
-                     "payload.ready.part.meta.tmp", "payload.stream.part"):
+                     "payload.ready.part.meta.tmp", "payload.stream.part", "payload.local.part"):
             path = parent / name
             try:
                 path.unlink(missing_ok=True)
@@ -316,40 +316,46 @@ class SmartStore:
         self.update(item["item_key"], phase="paused", error="저장 중 종료됨 — 임시 파일에서 재개 가능")
         return False
 
-    def finalize(self, item, cancel=None):
-        ready = self.stage(item)
+    def find_content_duplicate(self, size, digest, cancel=None, excluded_roots=()):
+        roots = [Path(p).resolve() for p in excluded_roots]
+        with self.connection() as conn:
+            candidates = conn.execute("SELECT * FROM smart_known_files WHERE size=? ORDER BY sha256=? DESC", (size, digest)).fetchall()
+            for row in candidates:
+                path = Path(row["path"])
+                if any(path.resolve().is_relative_to(root) for root in roots):
+                    continue
+                try:
+                    stat = path.stat()
+                    if path.is_symlink() or not path.is_file() or stat.st_size != size:
+                        continue
+                    if row["sha256"] and row["sha256"] != digest and stat.st_mtime_ns == row["mtime_ns"]:
+                        continue
+                    actual = hash_file(path, cancel)
+                    self._catalog(conn, path, actual)
+                    conn.commit()
+                    if actual == digest:
+                        return {"final_path": str(path), "sha256": digest}
+                except FileNotFoundError:
+                    continue
+        return None
+
+    def finalize(self, item, cancel=None, source_path=None, excluded_roots=()):
+        # source_path is only supplied after an explicit local-file move selection.
+        ready = Path(source_path) if source_path is not None else self.stage(item)
         if ready.is_symlink() or not ready.is_file():
             raise OSError("검증할 임시 파일이 없습니다.")
         size = ready.stat().st_size
+        source_stat = ready.stat()
         if item["size"] >= 0 and size != item["size"]:
-            raise OSError("다운로드 크기가 Telegram 파일 크기와 다릅니다.")
+            raise OSError("검사할 파일의 크기가 수집한 원본 크기와 다릅니다.")
         digest = hash_file(ready, cancel)
         with self.publish_lock:
-            with self.connection() as conn:
-                candidates = conn.execute("SELECT * FROM smart_known_files WHERE size=? ORDER BY sha256=? DESC", (size, digest)).fetchall()
-                for row in candidates:
-                    path = Path(row["path"])
-                    try:
-                        stat = path.stat()
-                        if path.is_symlink() or not path.is_file() or stat.st_size != size:
-                            continue
-                        # Known unequal hashes need no reread unless metadata changed.
-                        if row["sha256"] and row["sha256"] != digest and stat.st_mtime_ns == row["mtime_ns"]:
-                            continue
-                        actual = hash_file(path, cancel)
-                        self._catalog(conn, path, actual)
-                        conn.commit()
-                        if actual == digest:
-                            conn.execute("UPDATE smart_media SET phase='duplicate',selected=0,final_path=?,sha256=?,error=?,updated=? WHERE item_key=?",
-                                         (str(path), digest, "SHA-256 내용 중복", now(), item["item_key"]))
-                            conn.execute("INSERT INTO smart_events(item_key,event,detail,created) VALUES(?,?,?,?)",
-                                         (item["item_key"], "duplicate", "SHA-256 내용 중복: " + str(path), now()))
-                            conn.commit()
-                            self.cleanup_staging(item)
-                            return str(path), True
-                    except FileNotFoundError:
-                        continue
+            existing = self.find_content_duplicate(size, digest, cancel, excluded_roots)
+            if existing:
+                self.complete_duplicate(item, existing, "SHA-256 내용 중복")
+                return existing["final_path"], True
             root = Path(absolute_folder(item["folder"]))
+            root.mkdir(parents=True, exist_ok=True)
             name = safe_filename(item["name"])
             stem, suffix = os.path.splitext(name)
             counter = 1
@@ -369,6 +375,13 @@ class SmartStore:
                 if len(str(target).encode("utf-16-le")) > 480:
                     raise OSError("저장 경로가 너무 깁니다. 더 짧은 폴더를 지정하세요.")
                 # Durable intent allows recovery after publication but before DB commit.
+                if source_path is not None:
+                    current_stat = ready.stat()
+                    if (current_stat.st_size, current_stat.st_mtime_ns, current_stat.st_ino, current_stat.st_dev) != (
+                            source_stat.st_size, source_stat.st_mtime_ns, source_stat.st_ino, source_stat.st_dev):
+                        raise OSError("검사 후 원본이 변경되어 이동하지 않았습니다. 폴더를 다시 읽으세요.")
+                if cancel and cancel.is_set():
+                    raise InterruptedError("저장 전에 일시정지됨")
                 self.update(item["item_key"], phase="committing", final_path=str(target), sha256=digest)
                 try:
                     if os.name == "nt":

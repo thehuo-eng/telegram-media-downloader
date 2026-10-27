@@ -22,6 +22,8 @@ from PySide6.QtCore import QTimer
 from workers.telegram_worker import TelegramWorker
 from ui.main_window import MainWindow
 from smart.rules import Category
+from smart.local import scan_local
+from smart import VERSION
 import ui.app
 
 app = QApplication([])
@@ -32,7 +34,7 @@ if os.name == "nt":
 app.setFont(QFont("Malgun Gothic", 9))
 ui.app.apply_theme(True)
 worker = TelegramWorker("offline-qa", 0, "")
-window = MainWindow(worker, "3.0.0-smart")
+window = MainWindow(worker, VERSION)
 window.resize(1280, 800)
 store = window.page_smart.store
 store.save_categories([
@@ -41,11 +43,14 @@ store.save_categories([
     Category("강의영상", str(root / "강의영상"), extensions=["mp4", "mkv", "avi"], priority=2),
 ])
 names = ["회로이론_9장.pdf", "CIRCUIT_lecture03.mp4", "전자기학_기출2025.pdf", "일반_강의영상.mkv", "수업자료.zip", "README"]
-store.upsert_media([dict(account="offline-demo", chat="-100123", message_id=i, file_id=f"document:{i}",
-                        name=name, size=(i + 1) * 1024 * 1024, chat_title="수업 자료 (가상 예시)") for i, name in enumerate(names, 1)])
-store.set_setting("last_account", "offline-demo")
+source = root / "내보낸 원본 (가상 예시)"
+source.mkdir(exist_ok=True)
+for i, name in enumerate(names, 1):
+    (source / name).write_bytes(bytes([i]) * ((i + 1) * 1024))
+scan_local(store, [str(source)])
 store.set_setting("fallback", str(root / "미분류"))
 view = window.page_smart
+view.source_folders.addItem(str(source))
 view.category_view.categories = store.categories()
 view.category_view.reload()
 view.category_view.list.setCurrentRow(0)
@@ -54,7 +59,7 @@ view.controller.refresh()
 window.show()
 
 def capture():
-    for index, name in [(1, "preview"), (2, "categories"), (4, "settings")]:
+    for index, name in [(0, "sources"), (1, "preview"), (2, "categories"), (4, "settings")]:
         view.tabs.setCurrentIndex(index)
         app.processEvents()
         window.grab().save(str(root / f"smart-{name}.png"))

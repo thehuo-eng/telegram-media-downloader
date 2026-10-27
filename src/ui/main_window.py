@@ -1,4 +1,5 @@
 import os
+import sys
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QStackedWidget, QListWidget, QListWidgetItem,
@@ -15,6 +16,7 @@ from ui.views.downloads_view import DownloadsView
 from ui.views.file_manager_view import FileManagerView
 from ui.views.login_view import LoginView
 from ui.views.smart_view import SmartView
+from ui.views.local_view import LocalView
 from PySide6.QtGui import QCloseEvent, QAction
 from resource_utils import get_resource_path
 from utils.update_checker import UpdateChecker
@@ -25,7 +27,8 @@ class MainWindow(QMainWindow):
         print("DEBUG: MainWindow __init__ started")
         self.worker = telegram_worker
         self.version = version
-        self.setWindowTitle(f"Telegram Smart Downloader {version}")
+        self.local_mode = "--telegram-api" not in sys.argv
+        self.setWindowTitle(f"Telegram 파일 자동 분류 {version}" if self.local_mode else f"Telegram Smart Downloader {version}")
         self.resize(1100, 700)
         self.setMinimumSize(750, 500)
         self._is_authenticating = False
@@ -67,6 +70,12 @@ class MainWindow(QMainWindow):
         self.btn_about.setToolTip(f"A new version ({latest_version}) is available!")
 
     def show_about_dialog(self):
+        if self.local_mode:
+            QMessageBox.information(self, "Telegram 파일 자동 분류",
+                f"버전 {self.version}\nAPI 키와 로그인 없이 로컬 파일을 키워드·확장자로 분류합니다.\n"
+                "복사·이동, SHA-256 중복 검사, 일시정지·재개를 지원합니다.\n\n"
+                "원본: vinodkr494/telegram-media-downloader (MIT)\nCopyright © 2026 Vinod Kumar")
+            return
         msg = QMessageBox(self)
         msg.setWindowTitle("About TG Media Downloader")
         
@@ -130,9 +139,9 @@ class MainWindow(QMainWindow):
         
         tray_menu.addSeparator()
         action_pause = tray_menu.addAction("⏸ Pause All")
-        action_pause.triggered.connect(self.pause_all_downloads)
+        action_pause.triggered.connect(self.page_smart.controller.download_cancel.set if self.local_mode else self.pause_all_downloads)
         action_resume = tray_menu.addAction("▶ Resume All")
-        action_resume.triggered.connect(self.resume_all_downloads)
+        action_resume.triggered.connect((lambda: self.page_smart.controller.start_downloads()) if self.local_mode else self.resume_all_downloads)
 
         tray_menu.addSeparator()
         action_quit = tray_menu.addAction("❌ Quit App")
@@ -259,6 +268,10 @@ class MainWindow(QMainWindow):
         self.btn_logout.setCheckable(False)
         self.btn_logout.clicked.connect(self.logout)
         sidebar_layout.addWidget(self.btn_logout)
+        if self.local_mode:
+            self.btn_smart.setText("파일 분류")
+            for button in (self.btn_home, self.btn_queue, self.btn_files, self.btn_settings, self.btn_logout):
+                button.hide()
         
         # Window Icon
         icon_path = get_resource_path(os.path.join("assets", "logo.ico"))
@@ -294,9 +307,9 @@ class MainWindow(QMainWindow):
         self.page_queue = DownloadsView()
         self.page_files = FileManagerView()
         self.page_settings = SettingsView()
-        self.page_login = LoginView()
+        self.page_login = QWidget() if self.local_mode else LoginView()
         from database import DB_PATH
-        self.page_smart = SmartView(self.worker, DB_PATH)
+        self.page_smart = (LocalView if self.local_mode else SmartView)(self.worker, DB_PATH)
         self.page_smart.login_requested.connect(self.prompt_login)
         
         self.stacked_widget.addWidget(self.page_home)     # Index 0
@@ -309,10 +322,11 @@ class MainWindow(QMainWindow):
         self.header.hide()
         
         # Connect Login signals
-        self.page_login.login_started.connect(self.worker.start_login)
-        self.page_login.code_submitted.connect(self.worker.submit_code)
-        self.page_login.password_submitted.connect(self.worker.submit_password)
-        self.page_login.proxy_configured.connect(self.on_proxy_configured)
+        if not self.local_mode:
+            self.page_login.login_started.connect(self.worker.start_login)
+            self.page_login.code_submitted.connect(self.worker.submit_code)
+            self.page_login.password_submitted.connect(self.worker.submit_password)
+            self.page_login.proxy_configured.connect(self.on_proxy_configured)
         
         # Connect Queue Global Buttons
         self.page_queue.btn_pause_all.clicked.connect(self.pause_all_downloads)
@@ -497,6 +511,8 @@ class MainWindow(QMainWindow):
             )
 
     def prompt_login(self):
+        if self.local_mode:
+            return
         self._is_authenticating = True
         self.sidebarWidget.show()
         self.header.hide()

@@ -1,12 +1,12 @@
 # Telegram Bulk Media Downloader
 
-## Telegram Smart Downloader (Korean Windows edition)
+## Telegram File Organizer (Korean Windows edition)
 
-This fork adds filename keyword categories, per-file classification previews, global SHA-256 deduplication, resumable queues, and a Korean GUI while preserving the upstream features and MIT license.
+The default app organizes files already downloaded with Telegram Desktop: no API keys or Telegram login. It adds keyword categories, per-file previews, safe copy/move, global SHA-256 deduplication, resumable queues, and a Korean GUI. The upstream API downloader remains available with `--telegram-api`; its MIT license and existing data are preserved.
 
 **[한국어 사용 설명서 · 실행 · EXE 빌드](README.ko.md)** · [Architecture](docs/SMART_ARCHITECTURE.md) · [Validation](docs/VALIDATION.md)
 
-Build the smart edition with `build_windows.ps1`; the executable is `dist/TelegramSmartDownloader.exe`. The upstream documentation below remains available for the original UI.
+Build with `build_windows.ps1`; the executable is `dist/TelegramFileOrganizer.exe`. The upstream documentation below describes the optional API mode.
 
 [![GitHub Release](https://img.shields.io/github/v/release/vinodkr494/telegram-media-downloader?style=flat-square)](https://github.com/vinodkr494/telegram-media-downloader/releases/latest)
 [![GitHub Downloads (all assets, all releases)](https://img.shields.io/github/downloads/vinodkr494/telegram-media-downloader/total?style=flat-square)](https://github.com/vinodkr494/telegram-media-downloader/releases)

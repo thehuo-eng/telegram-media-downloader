@@ -18,19 +18,22 @@ from ui.views.category_view import CategoryView
 
 class SmartView(QWidget):
     login_requested = Signal()
+    store_type = SmartStore
+    controller_type = SmartController
+    local_mode = False
 
     def __init__(self, worker, db_path, parent=None):
         super().__init__(parent)
         self.setObjectName("SmartView")
-        self.store = SmartStore(db_path)
-        self.controller = SmartController(worker, self.store, self)
+        self.store = self.store_type(db_path)
+        self.controller = self.controller_type(worker, self.store, self)
         self.categories = self.store.categories()
         self.dirty = False
         self._snapshot = None
         root = QVBoxLayout(self)
         root.setContentsMargins(18, 12, 18, 12)
         top = QHBoxLayout()
-        title = QLabel("Telegram Smart Downloader")
+        title = QLabel("Telegram 파일 자동 분류" if self.local_mode else "Telegram Smart Downloader")
         title.setStyleSheet("font-size: 21px; font-weight: 600;")
         top.addWidget(title)
         top.addStretch()
@@ -38,6 +41,7 @@ class SmartView(QWidget):
         top.addWidget(self.account_label)
         login = QPushButton("텔레그램 연결")
         login.clicked.connect(self.login_requested.emit)
+        login.setVisible(not self.local_mode)
         top.addWidget(login)
         root.addLayout(top)
         self.tabs = QTabWidget()
@@ -161,7 +165,7 @@ class SmartView(QWidget):
         layout = QVBoxLayout(page)
         filters = QGridLayout()
         self.filter_checks = {}
-        saved = self.store.setting("filter", asdict(FileFilter()))
+        saved = self.store.setting(self.controller.filter_key, asdict(FileFilter()))
         for col, group in enumerate(list(FILE_GROUPS) + ["기타", "확장자 없음"]):
             cb = QCheckBox(group)
             cb.setChecked(group in saved["groups"])
@@ -177,7 +181,8 @@ class SmartView(QWidget):
             button.clicked.connect(lambda checked=False, selected=value: self.select_formats(selected))
             filters.addWidget(button, 1, col, 1, 1)
         layout.addLayout(filters)
-        help_text = QLabel("범주 셀을 두 번 클릭하면 수동 지정할 수 있습니다. 내용 중복은 내려받아 검사하기 전까지 미확인입니다. 같은 이름의 다른 파일에는 번호가 붙습니다.")
+        help_text = QLabel("범주 셀을 두 번 클릭하면 수동 지정할 수 있습니다. 저장 시 SHA-256으로 내용 중복을 검사하며, 같은 이름의 다른 파일에는 번호가 붙습니다." if self.local_mode else
+                          "범주 셀을 두 번 클릭하면 수동 지정할 수 있습니다. 내용 중복은 내려받아 검사하기 전까지 미확인입니다. 같은 이름의 다른 파일에는 번호가 붙습니다.")
         help_text.setWordWrap(True)
         layout.addWidget(help_text)
         toolbar = QHBoxLayout()
@@ -189,7 +194,7 @@ class SmartView(QWidget):
             button.clicked.connect(lambda checked=False, selected=value: self.select_files(selected))
             toolbar.addWidget(button)
         layout.addLayout(toolbar)
-        self.preview_model = MediaTableModel(parent=self)
+        self.preview_model = MediaTableModel(parent=self, local=self.local_mode)
         self.preview_model.manual_changed.connect(self.save_manual)
         self.preview_model.selection_changed.connect(self.save_selection)
         self.preview_table, self.preview_proxy = self.make_table(self.preview_model)
@@ -229,7 +234,7 @@ class SmartView(QWidget):
             phase.addItem(text, values)
         toolbar.addWidget(phase)
         layout.addLayout(toolbar)
-        self.queue_model = MediaTableModel(queue=True, parent=self)
+        self.queue_model = MediaTableModel(queue=True, parent=self, local=self.local_mode)
         self.queue_table, self.queue_proxy = self.make_table(self.queue_model)
         self.queue_table.setColumnHidden(0, True)
         self.queue_table.doubleClicked.connect(self.open_folder)
@@ -262,13 +267,15 @@ class SmartView(QWidget):
         self.concurrency = QSpinBox()
         self.concurrency.setRange(1, 8)
         self.concurrency.setValue(self.store.setting("concurrency", 3))
-        layout.addRow("동시 다운로드 파일 수", self.concurrency)
+        if not self.local_mode:
+            layout.addRow("동시 다운로드 파일 수", self.concurrency)
         self.speed = QSpinBox()
         self.speed.setRange(0, 1000000)
         self.speed.setSpecialValueText("제한 없음")
         self.speed.setSuffix(" KB/s (파일당)")
         self.speed.setValue(self.store.setting("max_speed_kb", 0))
-        layout.addRow("속도 제한", self.speed)
+        if not self.local_mode:
+            layout.addRow("속도 제한", self.speed)
         info = QLabel("모든 범주 폴더와 미분류 폴더를 중복 검사 대상으로 사용합니다. 추가로 관리할 기존 폴더를 아래에 등록할 수 있습니다.")
         info.setWordWrap(True)
         layout.addRow(info)
@@ -285,7 +292,8 @@ class SmartView(QWidget):
         save = QPushButton("설정 저장")
         save.clicked.connect(self.save_settings)
         layout.addRow(save)
-        indexing = QLabel("기존 파일 인덱싱은 파일을 수정하지 않고 위치·크기를 등록합니다. 다운로드 후 크기가 같은 후보만 SHA-256으로 검사합니다. 새 파일을 이 폴더에 추가했다면 다시 인덱싱하세요.")
+        indexing = QLabel("기존 파일 인덱싱은 파일을 수정하지 않고 위치·크기를 등록합니다. 크기가 같은 후보만 SHA-256으로 검사합니다. 로컬 분류 시작 시 저장 폴더를 자동으로 인덱싱합니다. 원본 폴더를 추가 관리 폴더로 등록하지 마세요." if self.local_mode else
+                          "기존 파일 인덱싱은 파일을 수정하지 않고 위치·크기를 등록합니다. 다운로드 후 크기가 같은 후보만 SHA-256으로 검사합니다. 새 파일을 이 폴더에 추가했다면 다시 인덱싱하세요.")
         indexing.setWordWrap(True)
         layout.addRow(indexing)
         row = QHBoxLayout()
@@ -370,7 +378,7 @@ class SmartView(QWidget):
             return
         try:
             selection = FileFilter([k for k, cb in self.filter_checks.items() if cb.isChecked()], extensions(self.extra_ext.text()))
-            self.store.set_setting("filter", asdict(selection))
+            self.store.set_setting(self.controller.filter_key, asdict(selection))
             self.controller.generation += 1
             # Update current rows immediately; the background snapshot also stays consistent.
             classifier = self.controller.classifier()

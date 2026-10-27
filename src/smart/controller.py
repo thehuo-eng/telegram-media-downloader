@@ -15,6 +15,7 @@ from smart.store import ACTIVE, TERMINAL
 
 
 class SmartController(QObject):
+    filter_key = "filter"
     account_changed = Signal(str)
     dialogs_ready = Signal(object)
     snapshot_ready = Signal(object)
@@ -43,7 +44,7 @@ class SmartController(QObject):
 
     def classifier(self):
         fallback = self.store.setting("fallback", str(Path.home() / "Downloads" / "Telegram" / "미분류"))
-        data = self.store.setting("filter", None)
+        data = self.store.setting(self.filter_key, None)
         return Classifier(self.store.categories(), fallback, FileFilter(**data) if data else None)
 
     def _submit(self, coroutine):

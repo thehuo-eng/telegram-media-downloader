@@ -1,7 +1,7 @@
 import os
 import sys
 
-APP_VERSION = "3.0.0-smart"
+APP_VERSION = "3.1.0-smart"
 
 # We add src to path so absolute imports within src work cleanly
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -43,7 +43,8 @@ def main():
 
     from resource_utils import get_project_root
     env_path = os.path.join(get_project_root(), '.env')
-    load_dotenv(dotenv_path=env_path)
+    if "--telegram-api" in sys.argv:
+        load_dotenv(dotenv_path=env_path)
     
     api_id_str = os.getenv('API_ID')
     if api_id_str:

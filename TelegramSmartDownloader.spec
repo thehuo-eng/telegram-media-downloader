@@ -31,7 +31,7 @@ if os.name == 'nt':
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, a.binaries, a.datas, [],
-    name='TelegramSmartDownloader', debug=False, bootloader_ignore_signals=False,
+    name='TelegramFileOrganizer', debug=False, bootloader_ignore_signals=False,
     strip=False, upx=False, console=False, disable_windowed_traceback=False,
     icon=str(root / 'src' / 'assets' / 'logo.ico'),
 )

@@ -129,7 +129,7 @@ def launch_app(telegram_worker, version="unknown"):
         from PySide6.QtCore import QTimer
         from smart.smoke import finish_smoke
         QTimer.singleShot(1200, lambda: finish_smoke(window, _app_instance))
-    else:
+    elif not window.local_mode:
         telegram_worker.start()
 
     exit_code = _app_instance.exec()

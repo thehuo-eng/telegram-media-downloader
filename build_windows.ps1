@@ -16,7 +16,7 @@ if (-not $SkipTests) {
 }
 & $pythonPath -m PyInstaller --noconfirm TelegramSmartDownloader.spec
 if ($LASTEXITCODE -ne 0) { throw 'EXE 빌드 실패' }
-$exePath = Join-Path $PSScriptRoot 'dist\TelegramSmartDownloader.exe'
+$exePath = Join-Path $PSScriptRoot 'dist\TelegramFileOrganizer.exe'
 & (Join-Path $PSScriptRoot 'tools\verify_exe.ps1') -ExePath $exePath
 $exeInfo = Get-Item -LiteralPath $exePath
 $exeHash = Get-FileHash -LiteralPath $exePath -Algorithm SHA256

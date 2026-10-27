@@ -25,10 +25,14 @@ class MediaTableModel(QAbstractTableModel):
     selection_changed = Signal(str, bool)
     HEADERS = ["선택", "원본 파일명", "채팅방", "확장자", "크기", "범주", "적용 규칙 / 충돌", "최종 저장 폴더", "중복 확인", "예상 / 현재 상태", "최종 파일명 / 경로"]
 
-    def __init__(self, queue=False, parent=None):
+    def __init__(self, queue=False, parent=None, local=False):
         super().__init__(parent)
         self.rows, self.by_key = [], {}
         self.queue = queue
+        self.local = local
+        if local:
+            self.HEADERS = list(self.HEADERS)
+            self.HEADERS[2] = "원본 폴더"
         self.classifier = None
         self.progress = {}
 
@@ -70,6 +74,8 @@ class MediaTableModel(QAbstractTableModel):
         if not self.queue and plan.conflicts:
             rule += " | 충돌: " + ", ".join(plan.conflicts)
         status = PHASES.get(item["phase"], item["phase"])
+        if self.local:
+            status = {"discovered": "분류 가능", "downloading": "복사 중", "duplicate": "중복 — 원본 유지"}.get(item["phase"], status)
         if not self.queue and not plan.allowed:
             status = "형식 필터로 제외"
         elif item["phase"] == "downloading" and item["item_key"] in self.progress:
