@@ -17,8 +17,11 @@
 | GUI | API 없는 원본 폴더·PDF 기본 필터·실제 분류 흐름, 25,000행 Qt 모델 응답 회귀 테스트 |
 | 화면 검사 | 밝은/어두운 테마, 원본 폴더·미리보기·범주·설정 화면 렌더링 확인 |
 | EXE 실행 | 실제 빌드한 EXE가 로컬 모드·폴더 선택 화면·스마트 탭 5개를 표시하고 종료 코드 0 |
+| GitHub Windows CI | 별도 Windows 환경의 테스트·EXE 빌드·실제 GUI 시작/종료·산출물 업로드 모두 성공 |
 
 EXE 결과 JSON에서 `telegram_started=false`, `local_mode=true`, `folder_picker=true`를 확인했습니다. 사용자의 실제 다운로드·인증 정보·Telegram 계정을 테스트에 사용하지 않았습니다.
+
+소스 커밋 `9f0c03a952542f51de0b7c2791c15614b2d25ba7`의 [GitHub Windows 검증 결과](https://github.com/thehuo-eng/telegram-media-downloader/actions/runs/40490723367)도 성공했습니다. 해당 페이지의 `TelegramFileOrganizer-Windows-x64` 산출물은 원격 빌드이며 아래 로컬 EXE와 해시가 다를 수 있습니다.
 
 ## 로컬 빌드 산출물
 
@@ -48,6 +51,5 @@ EXE 결과 JSON에서 `telegram_started=false`, `local_mode=true`, `folder_picke
 - 실제 별도 물리 드라이브·네트워크 공유 폴더 이동과 다른 Windows 10/11 PC는 미검증입니다. 다른 볼륨 로직은 모의 조건으로 검사했습니다.
 - Telegram Desktop의 실제 내보내기 작업은 사용자가 수행합니다. 이 프로그램은 누락된 미디어를 서버에서 다시 받지 않습니다.
 - 복사 모드는 원본과 목적 사본을 함께 보존합니다. 이동 모드도 중복 판정 원본은 자동 삭제하지 않습니다.
-- 이번 소스의 GitHub Windows CI 결과는 소스 게시 후 별도로 기록합니다.
 
 기반 3.0 API 버전의 검증 기록은 [이전 보고서](https://github.com/thehuo-eng/telegram-media-downloader/blob/b6d89a2802dd9c856c610f59f686280db9e9ccf2/docs/VALIDATION.md)에 남아 있습니다. 현재 사용법은 [한국어 설명서](../README.ko.md)를 참고하세요.
