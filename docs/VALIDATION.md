@@ -16,8 +16,11 @@
 | EXE 실행 | 별도 데이터 폴더에서 GUI 생성·스마트 탭 5개·종료 코드 0 확인 |
 | 빌드 검증 스크립트 | PowerShell 7 및 Windows 기본 PowerShell 5.1에서 실행 통과 |
 | 패키지 내용 | 세션·인증 설정·사용자 DB 및 충돌한 외부 ICU DLL이 포함되지 않음 |
+| GitHub Windows CI | 별도 Windows 환경의 테스트·EXE 빌드·GUI 시작/종료·산출물 업로드 모두 통과 |
 
 자동 테스트와 EXE 시작 검사는 실제 Telegram 계정 없이 수행했습니다. EXE 검증 결과의 `telegram_started`는 `false`입니다. GUI 성능 검증은 모의 메타데이터와 로컬 Qt 모델을 대상으로 하며 실제 Telegram 수만 파일의 수집 시간을 측정한 결과가 아닙니다.
+
+원격 검증은 소스 커밋 `4e4b11de05467ad49394bc7655e39f24b4319cb3`의 [GitHub Actions 실행 #1](https://github.com/thehuo-eng/telegram-media-downloader/actions/runs/40481690930)에서 성공했습니다. 이 실행 페이지에서 `TelegramSmartDownloader-Windows-x64` 산출물을 받을 수 있습니다. 아래 크기와 해시는 로컬 EXE 기준이며 원격 빌드 파일과 구별합니다.
 
 ## 빌드 산출물
 
@@ -50,6 +53,5 @@ EXE는 Git 소스에 포함하지 않습니다. 이 해시는 위 빌드 파일�
 - 실제 계정의 OTP/2FA 로그인, 실채팅 전체 이력, 비공개 그룹과 실제 포럼 토픽
 - 실제 대용량 전송 속도, 네트워크 장기 단절 및 Telegram 서버에서 발생한 FloodWait
 - 다른 Windows 10/11 PC, 수십만 파일의 장기 부하, 백신 및 디지털 서명 배포
-- GitHub Actions의 원격 실행 결과 (로컬 테스트와 빌드는 완료)
 
 일부 기존 화면에는 영어가 남아 있습니다. 기존 파일의 임의 외부 이동은 자동 추적하지 않으므로 이동 후 재인덱싱해야 합니다. 완료 파일의 범주를 변경해도 원본을 자동 이동하지 않습니다. 세부 사용·복구 방법은 [한국어 설명서](../README.ko.md), 요구사항별 테스트는 [개발 메모](SMART_ARCHITECTURE.md)를 참고하세요.
